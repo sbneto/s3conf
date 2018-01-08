@@ -1,10 +1,11 @@
 import os
 import codecs
+import logging
 from io import StringIO
 
 import boto3
 
-
+logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
 
 
@@ -79,12 +80,20 @@ class S3Conf:
             self.download_file(file_source, file_target)
 
     def environment_file(self, file_name, map_files=False, mapping='S3CONF_MAP'):
-        bucket, file_name = strip_s3_path(file_name)
-        s3 = self.get_resource()
-        file = s3.Object(bucket, file_name).get()
-        data = StringIO(str(file['Body'].read(), 'utf-8'))
-        env_vars = dict(parse_dotenv(data))
-        if map_files:
-            files_list = env_vars.get(mapping)
-            self.map_files(files_list)
-        return env_vars
+        if not file_name:
+            logger.info('s3conf file_name is not defined or is empty, skipping S3 environment setup.')
+            return {}
+        try:
+            bucket, file_name = strip_s3_path(file_name)
+            s3 = self.get_resource()
+            file = s3.Object(bucket, file_name).get()
+            data = StringIO(str(file['Body'].read(), 'utf-8'))
+            env_vars = dict(parse_dotenv(data))
+            if map_files:
+                files_list = env_vars.get(mapping)
+                self.map_files(files_list)
+            return env_vars
+        except Exception as e:
+            logger.error('s3conf was unable to load the environment variables: {}'.format(str(e)))
+            raise e
+
