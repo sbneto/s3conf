@@ -89,6 +89,7 @@ class S3Conf:
             self.download_file(file_source, file_target)
 
     def environment_file(self, file_name, map_files=False, mapping='S3CONF_MAP', set_environment=False):
+        logger.info('Loading configs from {}'.format(str(file_name)))
         if not file_name:
             logger.info('s3conf file_name is not defined or is empty, skipping S3 environment setup.')
             return {}
