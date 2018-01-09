@@ -49,6 +49,11 @@ def unpack_list(files_list):
     return files_map
 
 
+def setup_environment():
+    conf = S3Conf()
+    conf.environment_file(os.environ.get('S3CONF'), set_environment=True)
+
+
 class S3Conf:
     def __init__(self):
         self._resource = None
