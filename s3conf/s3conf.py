@@ -50,8 +50,12 @@ def unpack_list(files_list):
 
 
 def setup_environment():
-    conf = S3Conf()
-    conf.environment_file(os.environ.get('S3CONF'), set_environment=True)
+    try:
+        conf = S3Conf()
+        conf.environment_file(os.environ.get('S3CONF'), set_environment=True)
+    except Exception as e:
+        logger.error(str(e))
+        raise e
 
 
 class S3Conf:
