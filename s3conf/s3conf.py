@@ -79,7 +79,7 @@ class S3Conf:
         for file_source, file_target in files:
             self.download_file(file_source, file_target)
 
-    def environment_file(self, file_name, map_files=False, mapping='S3CONF_MAP'):
+    def environment_file(self, file_name, map_files=False, mapping='S3CONF_MAP', set_environment=False):
         if not file_name:
             logger.info('s3conf file_name is not defined or is empty, skipping S3 environment setup.')
             return {}
@@ -92,6 +92,9 @@ class S3Conf:
             if map_files:
                 files_list = env_vars.get(mapping)
                 self.map_files(files_list)
+            if set_environment:
+                for k, v in env_vars.items():
+                    os.environ[k] = v
             return env_vars
         except Exception as e:
             logger.error('s3conf was unable to load the environment variables: {}'.format(str(e)))
