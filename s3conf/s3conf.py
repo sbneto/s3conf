@@ -52,7 +52,9 @@ def unpack_list(files_list):
 def setup_environment():
     try:
         conf = S3Conf()
-        conf.environment_file(os.environ.get('S3CONF'), set_environment=True)
+        env_vars = conf.environment_file(os.environ.get('S3CONF'), set_environment=True)
+        for var_name, var_value in env_vars.items():
+            print('{}={}'.format(var_name, var_value))
     except Exception as e:
         logger.error(str(e))
         raise e
