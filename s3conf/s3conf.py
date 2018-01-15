@@ -30,9 +30,9 @@ def parse_dotenv(f):
         yield k, v
 
 
-def strip_s3_path(file_name):
-    bucket, _, file_name = file_name.lstrip('s3://').partition('/')
-    return bucket, file_name
+def strip_s3_path(path):
+    bucket, _, path = path.lstrip('s3://').partition('/')
+    return bucket, path
 
 
 def prepare_path(file_target):
@@ -79,16 +79,33 @@ class S3Conf:
             )
         return self._resource
 
-    def download_file(self, file_name, file_target):
-        bucket, file_name = strip_s3_path(file_name)
-        prepare_path(file_target)
-        s3 = self.get_resource()
-        s3.Object(bucket, file_name).download_file(file_target)
+    def download(self, path, path_target):
+        bucket, path = strip_s3_path(path)
+        bucket = self.get_resource().Bucket(bucket)
+        for obj in bucket.objects.filter(Prefix=path):
+            if not obj.key.endswith('/'):
+                if path.endswith('/') or not path:
+                    target_name = os.path.join(path_target, obj.key)
+                else:
+                    target_name = path_target
+                prepare_path(target_name)
+                bucket.download_file(obj.key, target_name)
+
+    def upload(self, path, path_target):
+        bucket, path_target = strip_s3_path(path_target)
+        bucket = self.get_resource().Bucket(bucket)
+        if os.path.isdir(path):
+            for root, dirs, files in os.walk(path):
+                for file in files:
+                    file_target = os.path.join(path_target, os.path.join(root, file).lstrip(path).lstrip('/'))
+                    bucket.upload_file(os.path.join(root, file), file_target)
+        else:
+            bucket.upload_file(path, path_target)
 
     def map_files(self, file_list):
         files = unpack_list(file_list)
         for file_source, file_target in files:
-            self.download_file(file_source, file_target)
+            self.download(file_source, file_target)
 
     def environment_file(self, file_name, map_files=False, mapping='S3CONF_MAP', set_environment=False):
         logger.info('Loading configs from {}'.format(str(file_name)))
