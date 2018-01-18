@@ -80,7 +80,7 @@ setup(
     ],
     python_requires='~=3.5',
     setup_requires=[],
-    tests_require=[],
+    tests_require=['pytest', 'pytest-cov'],
     classifiers=[
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
