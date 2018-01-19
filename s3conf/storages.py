@@ -57,12 +57,12 @@ class S3Storage:
         bucket, path_target = strip_s3_path(file_name)
         self._write_file(f, bucket, path_target)
 
-    def files(self, path):
-        bucket, path = strip_s3_path(path)
-        bucket = self.get_resource().Bucket(bucket)
+    def list(self, path):
+        bucket_name, path = strip_s3_path(path)
+        bucket = self.get_resource().Bucket(bucket_name)
         for obj in bucket.objects.filter(Prefix=path):
             if not obj.key.endswith('/'):
-                yield obj.key, self._read_file(bucket, obj.key)
+                yield strip_prefix(obj.key, path), self._read_file(bucket_name, obj.key)
 
 
 class LocalStorage:
@@ -77,7 +77,7 @@ class LocalStorage:
         prepare_path(file_name)
         open(file_name, 'wb').write(f.read())
 
-    def files(self, path):
+    def list(self, path):
         for root, dirs, files in os.walk(path):
             for file in files:
                 file_name = os.path.join(root, file)

@@ -61,7 +61,7 @@ class S3Conf:
             self.storage.download(file_source, file_target)
 
     def download(self, path, path_target):
-        for file_path, f in self.storage.files(path):
+        for file_path, f in self.storage.list(path):
             if path.endswith('/') or not path:
                 target_name = os.path.join(path_target, file_path)
             else:

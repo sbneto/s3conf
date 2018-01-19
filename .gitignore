@@ -69,3 +69,5 @@ local/
 scratch.py
 *.env
 *.sqlite
+
+tests/test_s3.py
