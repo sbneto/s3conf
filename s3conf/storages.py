@@ -78,7 +78,10 @@ class LocalStorage:
         open(file_name, 'wb').write(f.read())
 
     def list(self, path):
-        for root, dirs, files in os.walk(path):
-            for file in files:
-                file_name = os.path.join(root, file)
-                yield strip_prefix(file_name, path), open(file_name, 'rb')
+        if os.path.isdir(path):
+            for root, dirs, files in os.walk(path):
+                for file in files:
+                    file_name = os.path.join(root, file)
+                    yield strip_prefix(file_name, path), open(file_name, 'rb')
+        else:
+            yield path, open(path, 'rb')

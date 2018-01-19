@@ -35,15 +35,21 @@ def unpack_list(files_list):
     files_map = []
     for file_map in files_pairs:
         file_source, _, file_target = file_map.rpartition(':')
-        if file_source.startswith('s3://'):
+        if file_source and file_target:
             files_map.append((file_source, file_target))
     return files_map
 
 
-def setup_environment():
+def setup_environment(file_name=None, storage=None):
     try:
-        conf = S3Conf()
-        env_vars = conf.environment_file(os.environ.get('S3CONF'), set_environment=True)
+        if not file_name:
+            file_name = os.environ.get('S3CONF')
+        conf = S3Conf(storage=storage)
+        env_vars = conf.environment_file(
+            file_name,
+            set_environment=True,
+            map_files=True,
+        )
         for var_name, var_value in env_vars.items():
             print('{}={}'.format(var_name, var_value))
     except Exception as e:
@@ -58,7 +64,7 @@ class S3Conf:
     def map_files(self, file_list):
         files = unpack_list(file_list)
         for file_source, file_target in files:
-            self.storage.download(file_source, file_target)
+            self.download(file_source, file_target)
 
     def download(self, path, path_target):
         for file_path, f in self.storage.list(path):
@@ -88,7 +94,8 @@ class S3Conf:
             env_vars = dict(parse_dotenv(StringIO(str(self.storage(file_name).read(), 'utf-8'))))
             if map_files:
                 files_list = env_vars.get(mapping)
-                self.map_files(files_list)
+                if files_list:
+                    self.map_files(files_list)
             if set_environment:
                 for k, v in env_vars.items():
                     os.environ[k] = v

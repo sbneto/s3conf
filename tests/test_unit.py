@@ -1,7 +1,7 @@
 import os
 from shutil import rmtree
 
-from s3conf.s3conf import S3Conf
+from s3conf.s3conf import S3Conf, setup_environment
 from s3conf.storages import LocalStorage, prepare_path
 
 
@@ -61,5 +61,46 @@ def test_download_files():
         assert os.path.isfile('tests/local/subfolder/file3.txt')
         assert os.path.isfile('tests/local/subfolder/file4.txt')
     finally:
+        rmtree('tests/local', ignore_errors=True)
+        rmtree('tests/remote', ignore_errors=True)
+
+
+def test_empty_setup_environment():
+    try:
+        open('tests/test.env', 'w').write('TEST=123\nTEST2=456\n')
+        setup_environment(file_name='tests/test.env', storage=LocalStorage())
+    finally:
+        try:
+            os.remove('tests/test.env')
+        except FileNotFoundError:
+            pass
+
+
+def test_setup_environment():
+    try:
+        open('tests/test.env', 'w').write(
+            'TEST=123\n'
+            'TEST2=456\n'
+            'S3CONF_MAP=tests/remote/file1.txt:tests/local/file1.txt;'
+            'tests/remote/subfolder/:tests/local/subfolder/;'
+            '\n'
+        )
+        prepare_path('tests/remote/subfolder/')
+        prepare_path('tests/local/')
+        open('tests/remote/file1.txt', 'w').write('file1')
+        open('tests/remote/file2.txt', 'w').write('file2')
+        open('tests/remote/subfolder/file3.txt', 'w').write('file3')
+        open('tests/remote/subfolder/file4.txt', 'w').write('file4')
+
+        setup_environment(file_name='tests/test.env', storage=LocalStorage())
+
+        assert os.path.isfile('tests/local/file1.txt')
+        assert os.path.isfile('tests/local/subfolder/file3.txt')
+        assert os.path.isfile('tests/local/subfolder/file4.txt')
+    finally:
+        try:
+            os.remove('tests/test.env')
+        except FileNotFoundError:
+            pass
         rmtree('tests/local', ignore_errors=True)
         rmtree('tests/remote', ignore_errors=True)
