@@ -44,6 +44,8 @@ def setup_environment(file_name=None, storage=None):
     try:
         if not file_name:
             file_name = os.environ.get('S3CONF')
+        if not file_name:
+            raise ValueError('No evironment file provided. Nothing to be done.')
         conf = S3Conf(storage=storage)
         env_vars = conf.environment_file(
             file_name,
@@ -52,8 +54,10 @@ def setup_environment(file_name=None, storage=None):
         )
         for var_name, var_value in env_vars.items():
             print('{}={}'.format(var_name, var_value))
+    except ValueError as e:
+        logger.error(e)
     except Exception as e:
-        logger.error(str(e))
+        logger.error(e)
         raise e
 
 
@@ -101,5 +105,5 @@ class S3Conf:
                     os.environ[k] = v
             return env_vars
         except Exception as e:
-            logger.error('s3conf was unable to load the environment variables: {}'.format(str(e)))
+            logger.error('s3conf was unable to load the environment variables: %s', e)
             raise e

@@ -76,6 +76,10 @@ def test_empty_setup_environment():
             pass
 
 
+def test_no_file_defined():
+    setup_environment(storage=LocalStorage())
+
+
 def test_setup_environment():
     try:
         open('tests/test.env', 'w').write(
