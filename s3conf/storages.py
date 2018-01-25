@@ -12,10 +12,7 @@ def prepare_path(file_target):
 
 
 def strip_prefix(text, prefix):
-    if text.startswith(prefix):
-        return text[len(prefix):]
-    else:
-        return text
+    return text[len(prefix):] if text.startswith(prefix) else text
 
 
 class S3Storage:
