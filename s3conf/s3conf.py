@@ -45,7 +45,7 @@ def setup_environment(file_name=None, storage=None):
         if not file_name:
             file_name = os.environ.get('S3CONF')
         if not file_name:
-            raise ValueError('No evironment file provided. Nothing to be done.')
+            raise ValueError('No environment file provided. Nothing to be done.')
         conf = S3Conf(storage=storage)
         env_vars = conf.environment_file(
             file_name,
