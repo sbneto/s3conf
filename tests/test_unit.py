@@ -5,6 +5,10 @@ from s3conf.s3conf import S3Conf, setup_environment
 from s3conf.storages import LocalStorage, prepare_path
 
 
+def test_prepare_empty_path():
+    prepare_path('')
+
+
 def test_generate_dict():
     try:
         open('tests/test.env', 'w').write('TEST=123\nTEST2=456\n')

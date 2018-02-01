@@ -3,7 +3,7 @@ import boto3
 
 
 def prepare_path(file_target):
-    os.makedirs(file_target.rpartition('/')[0], exist_ok=True)
+    os.makedirs(os.path.abspath(file_target.rpartition('/')[0]), exist_ok=True)
 
 
 def strip_prefix(text, prefix):
