@@ -66,12 +66,16 @@ class S3Conf:
         self.storage = storage or S3Storage()
 
     def map_files(self, file_list):
+        logger.info('Mapping following files: %s', file_list)
         files = unpack_list(file_list)
         for file_source, file_target in files:
             self.download(file_source, file_target)
 
     def download(self, path, path_target):
-        for file_path, f in self.storage.list(path):
+        logger.info('Downloading %s to %s', path, path_target)
+        for file_path in self.storage.list(path):
+            # join might add a trailing slash, but we know it is a file, so we remove it
+            f = self.storage.read(os.path.join(path, file_path).rstrip('/'))
             if path.endswith('/') or not path:
                 target_name = os.path.join(path_target, file_path)
             else:
@@ -80,13 +84,15 @@ class S3Conf:
             open(target_name, 'wb').write(f.read())
 
     def upload(self, path, path_target):
+        logger.info('Uploading %s to %s', path, path_target)
         if os.path.isdir(path):
             for root, dirs, files in os.walk(path):
                 for file in files:
+                    file_source = os.path.join(root, file)
                     file_target = os.path.join(path_target, strip_prefix(os.path.join(root, file), path).lstrip('/'))
-                    self.storage.write(open(os.path.join(root, file), 'rb'), file_target)
+                    self.storage.write(open(file_source, 'rb'), file_target)
         else:
-            self.storage.write(path, path_target)
+            self.storage.write(open(path, 'rb'), path_target)
 
     def environment_file(self, file_name, map_files=False, mapping='S3CONF_MAP',
                          set_environment=False):

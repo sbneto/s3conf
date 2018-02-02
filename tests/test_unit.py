@@ -1,8 +1,14 @@
 import os
+import logging
 from shutil import rmtree
 
 from s3conf.s3conf import S3Conf, setup_environment
 from s3conf.storages import LocalStorage, prepare_path
+
+
+logging.getLogger('boto3').setLevel(logging.ERROR)
+logging.getLogger('botocore').setLevel(logging.ERROR)
+logging.getLogger('s3transfer').setLevel(logging.ERROR)
 
 
 def test_prepare_empty_path():
@@ -81,7 +87,10 @@ def test_empty_setup_environment():
 
 
 def test_no_file_defined():
-    setup_environment(storage=LocalStorage())
+    try:
+        setup_environment(storage=LocalStorage())
+    except ValueError as e:
+        assert str(e) == 'LocalStorage can not process S3 paths.'
 
 
 def test_setup_environment():
