@@ -2,17 +2,17 @@ import os
 import boto3
 
 
-def strip_s3_path(path):
-    bucket, _, path = path.lstrip('s3://').partition('/')
-    return bucket, path
-
-
 def prepare_path(file_target):
-    os.makedirs(file_target.rpartition('/')[0], exist_ok=True)
+    os.makedirs(os.path.abspath(file_target.rpartition('/')[0]), exist_ok=True)
 
 
 def strip_prefix(text, prefix):
     return text[len(prefix):] if text.startswith(prefix) else text
+
+
+def strip_s3_path(path):
+    bucket, _, path = strip_prefix(path, 's3://').partition('/')
+    return bucket, path
 
 
 class S3Storage:
