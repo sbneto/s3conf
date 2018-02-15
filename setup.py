@@ -77,6 +77,7 @@ setup(
     package_data=get_package_data(package),
     install_requires=[
         'boto3>=1.4.4',
+        'click>=6.7',
     ],
     python_requires='~=3.5',
     setup_requires=[],
@@ -91,4 +92,8 @@ setup(
         'Topic :: Internet',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
+    entry_points='''
+    [console_scripts]
+    s3conf=s3conf.client:main
+    ''',
 )
