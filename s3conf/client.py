@@ -18,17 +18,12 @@ def main(debug):
         logger.setLevel('DEBUG')
 
 
-@main.group()
-def env():
-    pass
-
-
-@env.command('get')
+@main.command('env')
 @click.option('--file',
               '-f',
-              default=None,
+              envvar='S3CONF',
               help='Environment file to be used. '
-                   'Defaults to the value of S#CONF environment variable if defined.')
+                   'Defaults to the value of S3CONF environment variable if defined.')
 @click.option('--storage',
               '-s',
               type=click.Choice(['s3', 'local']),
