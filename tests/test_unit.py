@@ -88,7 +88,7 @@ def test_empty_setup_environment():
 
 def test_no_file_defined():
     try:
-        setup_environment(storage=LocalStorage())
+        setup_environment(storage=LocalStorage(), map_files=True)
     except ValueError as e:
         assert str(e) == 'LocalStorage can not process S3 paths.'
 
@@ -109,7 +109,7 @@ def test_setup_environment():
         open('tests/remote/subfolder/file3.txt', 'w').write('file3')
         open('tests/remote/subfolder/file4.txt', 'w').write('file4')
 
-        setup_environment(file_name='tests/test.env', storage=LocalStorage())
+        setup_environment(file_name='tests/test.env', storage=LocalStorage(), map_files=True)
 
         assert os.path.isfile('tests/local/file1.txt')
         assert os.path.isfile('tests/local/subfolder/file3.txt')
