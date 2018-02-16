@@ -6,8 +6,10 @@ import boto3
 logger = logging.getLogger(__name__)
 
 
-def prepare_path(file_target):
-    os.makedirs(os.path.abspath(file_target.rpartition('/')[0]), exist_ok=True)
+def prepare_path(file_target, is_dir=False):
+    file_target = os.path.abspath(file_target)
+    dir_path = os.path.dirname(file_target) if not is_dir else file_target
+    os.makedirs(dir_path, exist_ok=True)
 
 
 def strip_prefix(text, prefix):
