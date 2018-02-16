@@ -40,20 +40,31 @@ def unpack_list(files_list):
     return files_map
 
 
-def setup_environment(file_name=None, storage=None):
+def phusion_dump(environment, path):
+    prepare_path(path, is_dir=True)
+    for k, v in environment.items():
+        with open(os.path.join(path, k), 'w') as f:
+            f.write(v + '\n')
+
+
+def setup_environment(
+        file_name=None,
+        storage=None,
+        dump=False,
+        dump_path='/etc/container_environment',
+        **kwargs
+):
     try:
         if not file_name:
             file_name = os.environ.get('S3CONF')
         if not file_name:
             raise ValueError('No environment file provided. Nothing to be done.')
         conf = S3Conf(storage=storage)
-        env_vars = conf.environment_file(
-            file_name,
-            set_environment=True,
-            map_files=True,
-        )
+        env_vars = conf.environment_file(file_name, **kwargs)
         for var_name, var_value in env_vars.items():
             print('{}={}'.format(var_name, var_value))
+        if dump:
+            phusion_dump(env_vars, dump_path)
     except ValueError as e:
         logger.error(e)
     except Exception as e:
