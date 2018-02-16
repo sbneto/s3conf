@@ -6,10 +6,11 @@ import boto3
 logger = logging.getLogger(__name__)
 
 
-def prepare_path(file_target, is_dir=False):
-    file_target = os.path.abspath(file_target)
-    dir_path = os.path.dirname(file_target) if not is_dir else file_target
-    os.makedirs(dir_path, exist_ok=True)
+def prepare_path(file_target):
+    # as the path might not exist, we can not test if it is a dir beforehand
+    # therefore, if it ends with a / it is considered a dir, otherwise, it is a regular file
+    # and the following code works for both cases
+    os.makedirs(os.path.abspath(file_target.rpartition('/')[0]), exist_ok=True)
 
 
 def strip_prefix(text, prefix):

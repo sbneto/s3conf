@@ -41,7 +41,7 @@ def unpack_list(files_list):
 
 
 def phusion_dump(environment, path):
-    prepare_path(path, is_dir=True)
+    prepare_path(path if path.endswith('/') else path + '/')
     for k, v in environment.items():
         with open(os.path.join(path, k), 'w') as f:
             f.write(v + '\n')
