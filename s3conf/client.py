@@ -1,6 +1,8 @@
 import logging
+import os
 
 import click
+import editor
 
 from . import s3conf
 from . import storages
@@ -10,12 +12,27 @@ logger = logging.getLogger()
 logger.setLevel('WARNING')
 
 
+def edit_config():
+    config_file = os.path.expanduser('~/.s3conf/config.ini')
+    storages.prepare_path(config_file)
+    editor.edit(filename=config_file)
+
+
 @click.group()
-@click.option('--debug',
-              is_flag=True)
-def main(debug):
+@click.option('--debug', is_flag=True)
+@click.option('--edit', '-e', is_flag=True)
+def main(debug, edit):
     if debug:
         logger.setLevel('DEBUG')
+    if edit:
+        edit_config()
+        return
+
+
+def edit_env():
+    config_file = os.path.expanduser('~/.s3conf/config.ini')
+    # storages.prepare_path(config_file)
+    # editor.edit(filename=config_file)
 
 
 @main.command('env')
@@ -28,8 +45,8 @@ def main(debug):
               '-s',
               type=click.Choice(['s3', 'local']),
               default='s3',
-              help='Storage driver to use. Defaults to the S3 driver. '
-                   'Local driver is mainly for testing purpouses.')
+              show_default=True,
+              help='Storage driver to use. Local driver is mainly for testing purpouses.')
 @click.option('--map-files',
               '-m',
               is_flag=True,
@@ -38,8 +55,9 @@ def main(debug):
 @click.option('--mapping',
               '-a',
               default='S3CONF_MAP',
+              show_default=True,
               help='Enviroment variable in the "path" file that contains the file mappings to be '
-                   'done if the flag --map-files is defined. Defaults to "S3CONF_MAP".')
+                   'done if the flag --map-files is defined.')
 @click.option('--dump',
               '-d',
               is_flag=True,
@@ -48,10 +66,13 @@ def main(debug):
 @click.option('--dump-path',
               '-p',
               default='/etc/container_environment',
-              help='Path where to dump variables as in the phusion docker image format. '
-                   'Defaults to "/etc/container_environment".')
-def setup(file, storage, map_files, mapping, dump, dump_path):
-    storage = None if storage == 's3' else storages.LocalStorage()
+              show_default=True,
+              help='Path where to dump variables as in the phusion docker image format. ')
+@click.option('--edit',
+              '-e',
+              is_flag=True)
+def env(file, storage, map_files, mapping, dump, dump_path):
+    storage = storages.S3Storage() if storage == 's3' else storages.LocalStorage()
     s3conf.setup_environment(
         file_name=file,
         storage=storage,
