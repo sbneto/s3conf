@@ -2,15 +2,11 @@ import os
 import logging
 import boto3
 
+from .utils import prepare_path
+from .credentials import Credentials
+
 
 logger = logging.getLogger(__name__)
-
-
-def prepare_path(file_target):
-    # as the path might not exist, we can not test if it is a dir beforehand
-    # therefore, if it ends with a / it is considered a dir, otherwise, it is a regular file
-    # and the following code works for both cases
-    os.makedirs(os.path.abspath(file_target.rpartition('/')[0]), exist_ok=True)
 
 
 def strip_prefix(text, prefix):
@@ -23,8 +19,9 @@ def strip_s3_path(path):
 
 
 class S3Storage:
-    def __init__(self):
+    def __init__(self, credentials=None):
         self._resource = None
+        self._credentials = credentials or Credentials()
 
     def get_resource(self):
         logger.debug('Getting S3 resource')
@@ -34,12 +31,12 @@ class S3Storage:
             logger.debug('Resource does not exist, creating a new one...')
             self._resource = boto3.resource(
                 's3',
-                aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID', None),
-                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY', None),
-                aws_session_token=os.environ.get('AWS_SESSION_TOKEN', None),
-                region_name=os.environ.get('AWS_S3_REGION_NAME', None),
-                use_ssl=os.environ.get('AWS_S3_USE_SSL', True),
-                endpoint_url=os.environ.get('AWS_S3_ENDPOINT_URL', None),
+                aws_access_key_id=self._credentials.get('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=self._credentials.get('AWS_SECRET_ACCESS_KEY'),
+                aws_session_token=self._credentials.get('AWS_SESSION_TOKEN'),
+                region_name=self._credentials.get('AWS_S3_REGION_NAME'),
+                use_ssl=self._credentials.get('AWS_S3_USE_SSL', True),
+                endpoint_url=self._credentials.get('AWS_S3_ENDPOINT_URL'),
             )
         return self._resource
 

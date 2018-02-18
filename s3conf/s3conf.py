@@ -2,8 +2,12 @@ import os
 import codecs
 import logging
 from io import StringIO
+from tempfile import NamedTemporaryFile
 
-from .storages import S3Storage, prepare_path, strip_prefix
+import editor
+
+from .storages import S3Storage, strip_prefix
+from .utils import prepare_path
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -124,3 +128,13 @@ class S3Conf:
         except Exception as e:
             logger.error('s3conf was unable to load the environment variables: %s', e)
             raise e
+
+    def edit(self, file_name):
+        with NamedTemporaryFile(mode='rb+', buffering=0) as f:
+            original_data = self.storage(file_name).read()
+            f.write(original_data)
+            edited_data = editor.edit(filename=f.name)
+            if edited_data != original_data:
+                self.upload(f.name, file_name)
+            else:
+                raise ValueError('File not changed. Nothing to upload.')

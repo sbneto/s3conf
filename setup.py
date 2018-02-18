@@ -78,6 +78,7 @@ setup(
     install_requires=[
         'boto3>=1.4.4',
         'click>=6.7',
+        'python-editor>=1.0.3'
     ],
     python_requires='~=3.5',
     setup_requires=[],
