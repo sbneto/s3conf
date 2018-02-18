@@ -3,8 +3,8 @@ import logging
 from shutil import rmtree
 
 from s3conf.s3conf import S3Conf, setup_environment
-from s3conf.storages import LocalStorage, prepare_path
-
+from s3conf.storages import LocalStorage
+from s3conf.utils import prepare_path
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
 logging.getLogger('botocore').setLevel(logging.ERROR)
