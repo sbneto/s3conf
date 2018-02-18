@@ -15,12 +15,8 @@ def get_version():
             print('Unable to get version number from git tags')
             exit(1)
 
-        # PEP 386 compatibility
-        if '-' in version:
-            version = '.post'.join(version.split('-')[:2])
-
         # Don't declare a version "dirty" merely because a time stamp has
-        # changed. If it is dirty, append a ".dev1" suffix to indicate a
+        # changed. If it is dirty, append a ".dev" suffix to indicate a
         # development revision after the release.
         with open(os.devnull, 'w') as fd_devnull:
             subprocess.call(['git', 'status'],
@@ -34,7 +30,7 @@ def get_version():
             exit(1)
 
         if dirty != '':
-            version += '.dev1'
+            version += '.dev'
 
     else:
         import pkg_resources
