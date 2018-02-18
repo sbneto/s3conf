@@ -14,6 +14,7 @@ logger.setLevel('WARNING')
 
 @click.group(invoke_without_command=True)
 @click.pass_context
+@click.version_option()
 @click.option('--debug', is_flag=True)
 @click.option('--edit', '-e', is_flag=True)
 def main(ctx, debug, edit):

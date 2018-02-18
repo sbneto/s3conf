@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import re
 import os
 import sys
 from setuptools import setup
@@ -13,15 +12,6 @@ url = 'https://github.com/sbneto/s3conf'
 author = 'Samuel Martins Barbosa Neto'
 author_email = 'samuel.m.b.neto@gmail.com'
 license_ = 'MIT'
-
-
-def get_version(package):
-    """
-    Return package version as listed in `__version__` in `init.py`.
-    """
-    init_py = open(os.path.join(package, '__init__.py')).read()
-    return re.search("^__version__ = ['\"]([^'\"]+)['\"]",
-                     init_py, re.MULTILINE).group(1)
 
 
 def get_packages(package):
@@ -49,8 +39,9 @@ def get_package_data(package):
     return {package: filepaths}
 
 
-version = get_version(package)
-
+with open('s3conf/version.py') as f:
+    exec(f.read())
+version = get_version()
 
 if sys.argv[-1] == 'publish':
     if os.system("pip freeze | grep wheel"):
