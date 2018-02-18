@@ -1,38 +1,36 @@
 import logging
-import os
 
 import click
-import editor
+from click.exceptions import UsageError
 
 from . import s3conf
 from . import storages
+from .credentials import Credentials, ConfigFileResolver
 
 
 logger = logging.getLogger()
 logger.setLevel('WARNING')
 
 
-def edit_config():
-    config_file = os.path.expanduser('~/.s3conf/config.ini')
-    storages.prepare_path(config_file)
-    editor.edit(filename=config_file)
-
-
-@click.group()
+@click.group(invoke_without_command=True)
+@click.pass_context
 @click.option('--debug', is_flag=True)
 @click.option('--edit', '-e', is_flag=True)
-def main(debug, edit):
+def main(ctx, debug, edit):
     if debug:
         logger.setLevel('DEBUG')
     if edit:
-        edit_config()
-        return
-
-
-def edit_env():
-    config_file = os.path.expanduser('~/.s3conf/config.ini')
-    # storages.prepare_path(config_file)
-    # editor.edit(filename=config_file)
+        if ctx.invoked_subcommand is None:
+            try:
+                ConfigFileResolver().edit()
+            except ValueError as e:
+                click.echo(str(e), err=True)
+            return
+        else:
+            raise UsageError('Edit should not be called with a subcommand.', ctx)
+    # manually call help in case no relevant settings were defined
+    if ctx.invoked_subcommand is None:
+        click.echo(main.get_help(ctx))
 
 
 @main.command('env')
@@ -68,19 +66,39 @@ def edit_env():
               default='/etc/container_environment',
               show_default=True,
               help='Path where to dump variables as in the phusion docker image format. ')
+@click.option('--quiet',
+              '-q',
+              is_flag=True,
+              help='Do not print any environment variables output.')
 @click.option('--edit',
               '-e',
               is_flag=True)
-def env(file, storage, map_files, mapping, dump, dump_path):
-    storage = storages.S3Storage() if storage == 's3' else storages.LocalStorage()
-    s3conf.setup_environment(
-        file_name=file,
-        storage=storage,
-        map_files=map_files,
-        mapping=mapping,
-        dump=dump,
-        dump_path=dump_path,
-    )
+def env(file, storage, map_files, mapping, dump, dump_path, quiet, edit):
+    credentials = Credentials()
+    file = file or credentials.get('S3CONF')
+    if not file:
+        click.echo('No environment file provided. Nothing to be done.', err=True)
+        return
+
+    storage = storages.S3Storage(credentials=credentials) if storage == 's3' else storages.LocalStorage()
+    conf = s3conf.S3Conf(storage=storage)
+
+    if edit:
+        try:
+            conf.edit(file)
+        except ValueError as e:
+            click.echo(str(e), err=True)
+    else:
+        env_vars = conf.environment_file(
+            file,
+            map_files=map_files,
+            mapping=mapping
+        )
+        if not quiet:
+            for var_name, var_value in env_vars.items():
+                click.echo('{}={}'.format(var_name, var_value))
+        if dump:
+            s3conf.phusion_dump(env_vars, dump_path)
 
 
 if __name__ == '__main__':
