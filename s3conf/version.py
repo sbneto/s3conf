@@ -1,12 +1,10 @@
 import os
-import sys
 import subprocess
 
 
 def get_version():
-    d = os.path.dirname(os.path.dirname(__file__))
-
-    if os.path.isdir(os.path.join(d, '.git')):
+    d = os.path.dirname(__file__)
+    if os.path.isdir(os.path.join(os.path.dirname(d), '.git')):
         # Get the version using "git describe".
         cmd = 'git describe --tags --match [0-9]*'.split()
         try:
@@ -34,6 +32,5 @@ def get_version():
 
     else:
         import pkg_resources
-        module = sys._getframe(1).f_globals.get('__name__')
-        version = pkg_resources.require(module)[0].version
+        version = pkg_resources.require('s3conf')[0].version
     return version
