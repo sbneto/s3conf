@@ -1,5 +1,8 @@
 import os
+import re
 import subprocess
+
+version_re = re.compile('^Version: (.+)$', re.M)
 
 
 def get_version():
@@ -31,6 +34,11 @@ def get_version():
             version += '.dev'
 
     else:
-        import pkg_resources
-        version = pkg_resources.require('s3conf')[0].version
+        try:
+            # Extract the version from the PKG-INFO file.
+            with open(os.path.join(d, 'PKG-INFO')) as f:
+                version = version_re.search(f.read()).group(1)
+        except FileNotFoundError:
+            import pkg_resources
+            version = pkg_resources.require('s3conf')[0].version
     return version
