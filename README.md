@@ -1,4 +1,4 @@
-#s3conf
+# s3conf
 
 [![Build Status](https://travis-ci.org/sbneto/s3conf.svg?branch=master)](https://travis-ci.org/sbneto/s3conf)
 
