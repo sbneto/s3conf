@@ -5,19 +5,36 @@ from click.exceptions import UsageError
 
 from . import s3conf
 from . import storages
-from .credentials import Credentials, ConfigFileResolver
+from .config import Settings, ConfigFileResolver
 
 
 logger = logging.getLogger()
 logger.setLevel('WARNING')
 
 
-@click.group(invoke_without_command=True)
-@click.pass_context
+class MyGroup(click.Group):
+    def parse_args(self, ctx, args):
+        if args and args[0] in self.commands:
+            if len(args) == 1 or args[1] not in self.commands:
+                for param in self.params:
+                    if param.param_type_name == 'argument':
+                        args.insert(0, param.default if param.default is not None else '')
+                        break
+        super(__class__, self).parse_args(ctx, args)
+
+
+@click.group(cls=MyGroup, invoke_without_command=True)
 @click.version_option()
+@click.argument('settings',
+                default='default')
+@click.option('--config-file',
+              default='~/.s3conf/config.ini',
+              show_default=True,
+              help='Path of the config file to be used.')
 @click.option('--debug', is_flag=True)
 @click.option('--edit', '-e', is_flag=True)
-def main(ctx, debug, edit):
+@click.pass_context
+def main(ctx, settings, config_file, debug, edit):
     if debug:
         logger.setLevel('DEBUG')
     if edit:
@@ -32,6 +49,8 @@ def main(ctx, debug, edit):
     # manually call help in case no relevant settings were defined
     if ctx.invoked_subcommand is None:
         click.echo(main.get_help(ctx))
+    else:
+        ctx.obj = {'settings': Settings(config_file=config_file, section=settings)}
 
 
 @main.command('env')
@@ -41,7 +60,6 @@ def main(ctx, debug, edit):
               help='Environment file to be used. '
                    'Defaults to the value of S3CONF environment variable if defined.')
 @click.option('--storage',
-              '-s',
               type=click.Choice(['s3', 'local']),
               default='s3',
               show_default=True,
@@ -52,18 +70,15 @@ def main(ctx, debug, edit):
               help='If defined, set the environment during the execution. '
                    'Note that this does not set the environment of the calling process.')
 @click.option('--mapping',
-              '-a',
               default='S3CONF_MAP',
               show_default=True,
               help='Enviroment variable in the "path" file that contains the file mappings to be '
                    'done if the flag --map-files is defined.')
-@click.option('--dump',
-              '-d',
+@click.option('--phusion',
               is_flag=True,
               help='If set, dumps variables to --dump-path in for format used by the phusion docker image. '
                    'More information in https://github.com/phusion/baseimage-docker.')
-@click.option('--dump-path',
-              '-p',
+@click.option('--phusion-path',
               default='/etc/container_environment',
               show_default=True,
               help='Path where to dump variables as in the phusion docker image format. ')
@@ -74,14 +89,15 @@ def main(ctx, debug, edit):
 @click.option('--edit',
               '-e',
               is_flag=True)
-def env(file, storage, map_files, mapping, dump, dump_path, quiet, edit):
-    credentials = Credentials()
-    file = file or credentials.get('S3CONF')
+@click.pass_context
+def env(ctx, file, storage, map_files, mapping, phusion, phusion_path, quiet, edit):
+    settings = ctx.obj['settings']
+    file = file or settings.get('S3CONF')
     if not file:
         click.echo('No environment file provided. Nothing to be done.', err=True)
         return
 
-    storage = storages.S3Storage(credentials=credentials) if storage == 's3' else storages.LocalStorage()
+    storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
     conf = s3conf.S3Conf(storage=storage)
 
     if edit:
@@ -98,8 +114,8 @@ def env(file, storage, map_files, mapping, dump, dump_path, quiet, edit):
         if not quiet:
             for var_name, var_value in env_vars.items():
                 click.echo('{}={}'.format(var_name, var_value))
-        if dump:
-            s3conf.phusion_dump(env_vars, dump_path)
+        if phusion:
+            s3conf.phusion_dump(env_vars, phusion_path)
 
 
 if __name__ == '__main__':
