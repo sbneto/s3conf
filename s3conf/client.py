@@ -118,5 +118,21 @@ def env(ctx, file, storage, map_files, mapping, phusion, phusion_path, quiet, ed
             s3conf.phusion_dump(env_vars, phusion_path)
 
 
+@main.command('download')
+@click.argument('remote_path')
+@click.argument('local_path')
+@click.option('--storage',
+              type=click.Choice(['s3', 'local']),
+              default='s3',
+              show_default=True,
+              help='Storage driver to use. Local driver is mainly for testing purpouses.')
+@click.pass_context
+def env(ctx, remote_path, local_path, storage):
+    settings = ctx.obj['settings']
+    storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
+    conf = s3conf.S3Conf(storage=storage)
+    conf.download(remote_path, local_path)
+
+
 if __name__ == '__main__':
     main()
