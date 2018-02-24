@@ -2,6 +2,9 @@ import os
 import logging
 from shutil import rmtree
 
+from click.testing import CliRunner
+
+from s3conf import client
 from s3conf.s3conf import S3Conf, setup_environment
 from s3conf.storages import LocalStorage
 from s3conf.utils import prepare_path
@@ -9,6 +12,13 @@ from s3conf.utils import prepare_path
 logging.getLogger('boto3').setLevel(logging.ERROR)
 logging.getLogger('botocore').setLevel(logging.ERROR)
 logging.getLogger('s3transfer').setLevel(logging.ERROR)
+
+
+def test_cli():
+    os.environ['LC_ALL'] = 'C.UTF-8'
+    os.environ['LANG'] = 'C.UTF-8'
+    runner = CliRunner()
+    result = runner.invoke(client.main, ['env', '--help'])
 
 
 def test_prepare_empty_path():
