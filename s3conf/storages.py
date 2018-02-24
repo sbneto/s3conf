@@ -3,7 +3,7 @@ import logging
 import boto3
 
 from .utils import prepare_path
-from .credentials import Credentials
+from .config import Settings
 
 
 logger = logging.getLogger(__name__)
@@ -19,9 +19,9 @@ def strip_s3_path(path):
 
 
 class S3Storage:
-    def __init__(self, credentials=None):
+    def __init__(self, settings=None):
         self._resource = None
-        self._credentials = credentials or Credentials()
+        self._settings = settings or Settings()
 
     def get_resource(self):
         logger.debug('Getting S3 resource')
@@ -31,12 +31,12 @@ class S3Storage:
             logger.debug('Resource does not exist, creating a new one...')
             self._resource = boto3.resource(
                 's3',
-                aws_access_key_id=self._credentials.get('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=self._credentials.get('AWS_SECRET_ACCESS_KEY'),
-                aws_session_token=self._credentials.get('AWS_SESSION_TOKEN'),
-                region_name=self._credentials.get('AWS_S3_REGION_NAME'),
-                use_ssl=self._credentials.get('AWS_S3_USE_SSL', True),
-                endpoint_url=self._credentials.get('AWS_S3_ENDPOINT_URL'),
+                aws_access_key_id=self._settings.get('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=self._settings.get('AWS_SECRET_ACCESS_KEY'),
+                aws_session_token=self._settings.get('AWS_SESSION_TOKEN'),
+                region_name=self._settings.get('AWS_S3_REGION_NAME'),
+                use_ssl=self._settings.get('AWS_S3_USE_SSL', True),
+                endpoint_url=self._settings.get('AWS_S3_ENDPOINT_URL'),
             )
         return self._resource
 
