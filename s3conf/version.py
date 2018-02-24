@@ -11,7 +11,7 @@ def get_version():
         # Get the version using "git describe".
         cmd = 'git describe --tags --match [0-9]*'.split()
         try:
-            version = subprocess.check_output(cmd).decode().strip()
+            version = subprocess.check_output(cmd, cwd=d).decode().strip()
         except subprocess.CalledProcessError:
             print('Unable to get version number from git tags')
             exit(1)
@@ -25,7 +25,7 @@ def get_version():
 
         cmd = 'git diff-index --name-only HEAD'.split()
         try:
-            dirty = subprocess.check_output(cmd).decode().strip()
+            dirty = subprocess.check_output(cmd, cwd=d).decode().strip()
         except subprocess.CalledProcessError:
             print('Unable to get git index status')
             exit(1)
