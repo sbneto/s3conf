@@ -55,6 +55,22 @@ AWS_S3_ENDPOINT_URL=***endpoint_url***
 
 Eniroment variables have precedence over variables defined in the config file.
 
+If you create a section other than the `default` section in the ini file, you can use it passing it
+as an argument.
+
+```
+[my_section]
+S3CONF=s3://mybucket/myfile.env
+AWS_ACCESS_KEY_ID=***access_key***
+AWS_SECRET_ACCESS_KEY=***secret_access_key***
+AWS_S3_REGION_NAME=***region_name***
+AWS_S3_ENDPOINT_URL=***endpoint_url***
+```
+
+```bash
+s3conf my_section env
+```
+
 ## Environment File
 
 Once credentials are in place, geting the data from the file defined in `S3CONF` is fairly simple. 
@@ -134,11 +150,11 @@ environement variables themselves (a full description of this process can be fou
 <https://github.com/phusion/baseimage-docker#environment_variables>).
 
  The client has a feature that automatically creates these files based on the file read from the S3-like service.
- To do so, it is enough to run it with the `-d` flag. Therefore, if we wanted to map files and dump them in the Phusion
+ To do so, it is enough to run it with the `--phusion` flag. Therefore, if we wanted to map files and dump them in the Phusion
  format, we would run our client in the following way:
  
  ```bash
- s3conf env -md
+ s3conf env -m --phusion
  ```
 
 The Phusion container also defines how to run scripts at container startup (an alternative for the `entrypoint.sh`, 
