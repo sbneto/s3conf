@@ -32,7 +32,6 @@ def get_version():
 
         if dirty != '':
             version += '.dev'
-
     else:
         try:
             # Extract the version from the PKG-INFO file.
