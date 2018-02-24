@@ -49,7 +49,7 @@ class ConfigFileResolver:
                 raise ValueError('Nothing to write. Config file not created.')
 
 
-class Credentials:
+class Settings:
     def __init__(self, config_file=None, section=None):
         self.resolvers = [
             EnvironmentResolver(),
