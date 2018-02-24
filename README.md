@@ -131,7 +131,7 @@ that sets the environment variables and map all needed files:
 ```bash
 #!/usr/bin/env bash
 set -e
-s3conf env -m
+export $(s3conf env -m)
 exec "$@"
 ```
 
