@@ -1,6 +1,7 @@
 import os
 import logging
 import boto3
+from io import BytesIO
 
 from .utils import prepare_path
 from .config import Settings
@@ -43,19 +44,21 @@ class S3Storage:
     def __call__(self, file_name):
         return self.read(file_name)
 
-    def _read_file(self, bucket, file_name):
+    def _read_file(self, bucket, file_name, stream=None):
         s3 = self.get_resource()
-        file = s3.Object(bucket, file_name).get()
-        return file['Body']
+        stream = stream or BytesIO()
+        s3.Object(bucket, file_name).download_fileobj(stream)
+        stream.seek(0)
+        return stream
 
     def _write_file(self, f, bucket, path_target):
         s3 = self.get_resource()
         s3.Object(bucket, path_target).upload_fileobj(f)
 
-    def read(self, file_name):
+    def read(self, file_name, stream=None):
         logger.debug('Reading from %s', file_name)
         bucket, file_name = strip_s3_path(file_name)
-        return self._read_file(bucket, file_name)
+        return self._read_file(bucket, file_name, stream=stream)
 
     def write(self, f, file_name):
         logger.debug('Writing to %s', file_name)
@@ -81,9 +84,13 @@ class LocalStorage:
         if path.startswith('s3://'):
             raise ValueError('LocalStorage can not process S3 paths.')
 
-    def read(self, file_name):
+    def read(self, file_name, stream=None):
         self._validate_path(file_name)
-        return open(file_name, 'rb')
+        stream = stream or BytesIO()
+        with open(file_name, 'rb') as f:
+            stream.write(f.read())
+        stream.seek(0)
+        return stream
 
     def write(self, f, file_name):
         self._validate_path(file_name)

@@ -89,14 +89,15 @@ class S3Conf:
     def download(self, path, path_target):
         logger.info('Downloading %s to %s', path, path_target)
         for file_path in self.storage.list(path):
-            # join might add a trailing slash, but we know it is a file, so we remove it
-            f = self.storage.read(os.path.join(path, file_path).rstrip('/'))
             if path.endswith('/') or not path:
                 target_name = os.path.join(path_target, file_path)
             else:
                 target_name = path_target
             prepare_path(target_name)
-            open(target_name, 'wb').write(f.read())
+            with open(target_name, 'wb') as f:
+                # join might add a trailing slash, but we know it is a file, so we remove it
+                # reads directly to the file stream
+                self.storage.read(os.path.join(path, file_path).rstrip('/'), stream=f)
 
     def upload(self, path, path_target):
         logger.info('Uploading %s to %s', path, path_target)
