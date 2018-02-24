@@ -4,6 +4,12 @@
 
 Utility package to help managing configuration files stored in S3-like services. Needs python 3 to work.
 
+# Installation
+
+```python
+pip install s3conf
+```
+
 # Usage
 
 ## Configuration
