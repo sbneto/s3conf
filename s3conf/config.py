@@ -51,10 +51,12 @@ class ConfigFileResolver:
 
 class Settings:
     def __init__(self, config_file=None, section=None):
-        self.resolvers = [
-            EnvironmentResolver(),
-            ConfigFileResolver(config_file, section)
-        ]
+        self.resolvers = []
+        self.resolvers.append(EnvironmentResolver())
+        if config_file:
+            self.resolvers.append(ConfigFileResolver(config_file, section))
+        self.resolvers.append(ConfigFileResolver('./.s3conf', section))
+        self.resolvers.append(ConfigFileResolver(None, section))
 
     def get(self, item, default=None):
         for resolver in self.resolvers:
