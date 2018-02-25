@@ -6,8 +6,8 @@ version_re = re.compile('^Version: (.+)$', re.M)
 
 
 def get_version(repo_path=None):
-    repo_path = os.path.abspath(repo_path or os.path.dirname(__file__))
-    if os.path.isdir(os.path.join(os.path.dirname(repo_path), '.git')):
+    repo_path = os.path.abspath(repo_path or os.path.dirname(os.path.dirname(__file__)))
+    if os.path.isdir(os.path.join(repo_path, '.git')):
         # Get the version using "git describe".
         cmd = 'git describe --tags --match [0-9]*'.split()
         try:
