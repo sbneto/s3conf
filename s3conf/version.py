@@ -5,13 +5,13 @@ import subprocess
 version_re = re.compile('^Version: (.+)$', re.M)
 
 
-def get_version():
-    d = os.path.abspath(os.path.dirname(__file__))
-    if os.path.isdir(os.path.join(os.path.dirname(d), '.git')):
+def get_version(repo_path=None):
+    repo_path = os.path.abspath(repo_path or os.path.dirname(__file__))
+    if os.path.isdir(os.path.join(os.path.dirname(repo_path), '.git')):
         # Get the version using "git describe".
         cmd = 'git describe --tags --match [0-9]*'.split()
         try:
-            version = subprocess.check_output(cmd, cwd=d).decode().strip()
+            version = subprocess.check_output(cmd, cwd=repo_path).decode().strip()
         except subprocess.CalledProcessError:
             print('Unable to get version number from git tags')
             exit(1)
@@ -25,7 +25,7 @@ def get_version():
 
         cmd = 'git diff-index --name-only HEAD'.split()
         try:
-            dirty = subprocess.check_output(cmd, cwd=d).decode().strip()
+            dirty = subprocess.check_output(cmd, cwd=repo_path).decode().strip()
         except subprocess.CalledProcessError:
             print('Unable to get git index status')
             exit(1)
@@ -35,7 +35,7 @@ def get_version():
     else:
         try:
             # Extract the version from the PKG-INFO file.
-            with open(os.path.join(d, 'PKG-INFO')) as f:
+            with open(os.path.join(repo_path, 'PKG-INFO')) as f:
                 version = version_re.search(f.read()).group(1)
         except FileNotFoundError:
             import pkg_resources
