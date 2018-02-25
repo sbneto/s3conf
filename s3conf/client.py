@@ -112,7 +112,7 @@ def env(ctx, file, storage, map_files, mapping, phusion, phusion_path, quiet, ed
             mapping=mapping
         )
         if not quiet:
-            for var_name, var_value in env_vars.items():
+            for var_name, var_value in sorted(env_vars.items(), key=lambda x: x[0]):
                 click.echo('{}={}'.format(var_name, var_value))
         if phusion:
             s3conf.phusion_dump(env_vars, phusion_path)
