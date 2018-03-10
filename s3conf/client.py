@@ -35,6 +35,10 @@ class MyGroup(click.Group):
 @click.option('--edit', '-e', is_flag=True)
 @click.pass_context
 def main(ctx, settings, config_file, debug, edit):
+    """
+    Simple command line tool to help manage environment variables stored in a S3-like system. Facilitates editing text
+    files remotely stored, as well as downloading and uploading files.
+    """
     if debug:
         logger.setLevel('DEBUG')
     if edit:
@@ -81,7 +85,7 @@ def main(ctx, settings, config_file, debug, edit):
 @click.option('--phusion-path',
               default='/etc/container_environment',
               show_default=True,
-              help='Path where to dump variables as in the phusion docker image format. ')
+              help='Path where to dump variables as in the phusion docker image format.')
 @click.option('--quiet',
               '-q',
               is_flag=True,
@@ -128,10 +132,43 @@ def env(ctx, file, storage, map_files, mapping, phusion, phusion_path, quiet, ed
               help='Storage driver to use. Local driver is mainly for testing purpouses.')
 @click.pass_context
 def env(ctx, remote_path, local_path, storage):
+    """
+    Download a file or folder from the S3-like service.
+
+    If REMOTE_PATH has a trailing slash it is considered to be a folder, e.g.: "s3://my-bucket/my-folder/". In this
+    case, LOCAL_PATH must be a folder as well. The files and subfolder structure in REMOTE_PATH are copied to
+    LOCAL_PATH.
+
+    If REMOTE_PATH does not have a trailing slash, it is considered to be a file, and LOCAL_PATH should be a file as
+    well.
+    """
     settings = ctx.obj['settings']
     storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
     conf = s3conf.S3Conf(storage=storage)
     conf.download(remote_path, local_path)
+
+
+@main.command('upload')
+@click.argument('local_path')
+@click.argument('remote_path')
+@click.option('--storage',
+              type=click.Choice(['s3', 'local']),
+              default='s3',
+              show_default=True,
+              help='Storage driver to use. Local driver is mainly for testing purpouses.')
+@click.pass_context
+def env(ctx, remote_path, local_path, storage):
+    """
+    Upload a file or folder to the S3-like service.
+
+    If LOCAL_PATH is a folder, the files and subfolder structure in LOCAL_PATH are copied to REMOTE_PATH.
+
+    If LOCAL_PATH is a file, the REMOTE_PATH file is created with the same contents.
+    """
+    settings = ctx.obj['settings']
+    storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
+    conf = s3conf.S3Conf(storage=storage)
+    conf.upload(local_path, remote_path)
 
 
 if __name__ == '__main__':
