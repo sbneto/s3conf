@@ -66,8 +66,8 @@ def main(ctx, edit, global_settings):
 @click.option('--map-files',
               '-m',
               is_flag=True,
-              help='If defined, set the environment during the execution. '
-                   'Note that this does not set the environment of the calling process.')
+              help='If defined, tries to map files from the storage to the local drive as defined by '
+                   'the variable S3CONF_MAP read from the S3CONF file.')
 @click.option('--phusion',
               is_flag=True,
               help='If set, dumps variables to --dump-path in for format used by the phusion docker image. '
@@ -84,6 +84,10 @@ def main(ctx, edit, global_settings):
               '-e',
               is_flag=True)
 def env(section, storage, map_files, phusion, phusion_path, quiet, edit):
+    """
+    Reads the file defined by the S3CONF variable and output its contents to stdout. Logs are printed to stderr.
+    See options for added functionality: editing file, mapping files, dumping in the phusion-baseimage format, etc.
+    """
     try:
         logger.debug('Running env command')
         settings = get_settings(section)
