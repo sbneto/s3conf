@@ -71,3 +71,5 @@ scratch.py
 *.sqlite
 
 tests/test_s3.py
+
+.s3conf
