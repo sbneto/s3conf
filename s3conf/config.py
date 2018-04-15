@@ -1,4 +1,5 @@
 import os
+import logging
 from tempfile import NamedTemporaryFile
 from configparser import ConfigParser
 
@@ -7,16 +8,21 @@ import editor
 from .utils import prepare_path
 
 
+logger = logging.getLogger(__name__)
+
+
+GLOBAL_CONFIG_FILE = '~/.s3conf'
+LOCAL_CONFIG_FILE = './.s3conf/config'
+
+
 class EnvironmentResolver:
     def get(self, item, default=None):
         return os.environ.get(item, default)
 
 
 class ConfigFileResolver:
-    DEFAULT_CONFIG_FILE = '~/.s3conf/config.ini'
-
-    def __init__(self, config_file=None, section=None):
-        self.config_file = os.path.expanduser(config_file or ConfigFileResolver.DEFAULT_CONFIG_FILE)
+    def __init__(self, config_file, section=None):
+        self.config_file = os.path.expanduser(config_file)
         self.section = section or 'default'
         self._config = None
 
@@ -50,13 +56,11 @@ class ConfigFileResolver:
 
 
 class Settings:
-    def __init__(self, config_file=None, section=None):
+    def __init__(self, section=None):
         self.resolvers = []
         self.resolvers.append(EnvironmentResolver())
-        if config_file:
-            self.resolvers.append(ConfigFileResolver(config_file, section))
-        self.resolvers.append(ConfigFileResolver('./.s3conf', section))
-        self.resolvers.append(ConfigFileResolver(None, section))
+        self.resolvers.append(ConfigFileResolver(LOCAL_CONFIG_FILE, section))
+        self.resolvers.append(ConfigFileResolver(GLOBAL_CONFIG_FILE))
 
     def get(self, item, default=None):
         for resolver in self.resolvers:
@@ -65,4 +69,5 @@ class Settings:
                 break
         else:
             value = default
+        logger.debug('Entry %s has value %s', item, value)
         return value
