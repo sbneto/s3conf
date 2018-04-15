@@ -1,4 +1,5 @@
 import logging
+import sys
 
 import click
 from click.exceptions import UsageError
@@ -96,11 +97,12 @@ def main(ctx, edit, global_settings):
 def env(settings, file, storage, map_files, mapping, phusion, phusion_path, quiet, edit):
     logger.debug('Running env command')
     settings = get_settings(settings)
-    file = file or settings.get('S3CONF')
-    if not file:
+    try:
+        file = file or settings['S3CONF']
+    except KeyError:
         logger.error('No environment file provided. Set the environemnt variable S3CONF '
                      'or create a config file. Nothing to be done.')
-        return
+        sys.exit(1)
 
     storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
     conf = s3conf.S3Conf(storage=storage)

@@ -62,12 +62,18 @@ class Settings:
         self.resolvers.append(ConfigFileResolver(LOCAL_CONFIG_FILE, section))
         self.resolvers.append(ConfigFileResolver(GLOBAL_CONFIG_FILE))
 
-    def get(self, item, default=None):
+    def __getitem__(self, item):
         for resolver in self.resolvers:
             value = resolver.get(item)
             if value:
                 break
         else:
-            value = default
+            raise KeyError()
         logger.debug('Entry %s has value %s', item, value)
         return value
+
+    def get(self, item, default=None):
+        try:
+            return self[item]
+        except KeyError:
+            return default
