@@ -56,7 +56,8 @@ def main(ctx, edit, global_settings):
 
 
 @main.command('env')
-@click.argument('settings', required=False)
+@click.argument('section',
+                required=False)
 @click.option('--storage',
               type=click.Choice(['s3', 'local']),
               default='s3',
@@ -82,10 +83,10 @@ def main(ctx, edit, global_settings):
 @click.option('--edit',
               '-e',
               is_flag=True)
-def env(settings, storage, map_files, phusion, phusion_path, quiet, edit):
+def env(section, storage, map_files, phusion, phusion_path, quiet, edit):
     try:
         logger.debug('Running env command')
-        settings = get_settings(settings)
+        settings = get_settings(section)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         if edit:
@@ -100,8 +101,16 @@ def env(settings, storage, map_files, phusion, phusion_path, quiet, edit):
             if phusion:
                 s3conf.phusion_dump(env_vars, phusion_path)
     except exceptions.EnvfilePathNotDefinedError:
-        raise UsageError('No environment file provided. Set the environemnt variable S3CONF '
-                         'or create a config file. Nothing to be done.')
+        error_msg = 'Set the environemnt variable S3CONF or provide a section from an existing config file.'
+        try:
+            sections_detected = ''
+            for section in config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).sections():
+                sections_detected += '    {}\n'.format(section)
+        except FileNotFoundError:
+            pass
+        if sections_detected:
+            sections_detected = '\n\nThe following sections were detected:\n\n' + sections_detected
+        raise UsageError(error_msg + sections_detected)
 
 
 @main.command('download')
