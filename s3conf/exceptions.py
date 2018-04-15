@@ -1,0 +1,2 @@
+class EnvfilePathNotDefinedError(Exception):
+    pass
