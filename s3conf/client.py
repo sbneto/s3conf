@@ -59,11 +59,6 @@ def main(ctx, edit, global_settings):
 
 @main.command('env')
 @click.argument('settings', required=False)
-@click.option('--file',
-              '-f',
-              envvar='S3CONF',
-              help='Environment file to be used. '
-                   'Defaults to the value of S3CONF environment variable if defined.')
 @click.option('--storage',
               type=click.Choice(['s3', 'local']),
               default='s3',
@@ -94,15 +89,14 @@ def main(ctx, edit, global_settings):
 @click.option('--edit',
               '-e',
               is_flag=True)
-def env(settings, file, storage, map_files, mapping, phusion, phusion_path, quiet, edit):
+def env(settings, storage, map_files, mapping, phusion, phusion_path, quiet, edit):
     logger.debug('Running env command')
     settings = get_settings(settings)
     try:
-        file = file or settings['S3CONF']
+        file = settings['S3CONF']
     except KeyError:
-        logger.error('No environment file provided. Set the environemnt variable S3CONF '
-                     'or create a config file. Nothing to be done.')
-        sys.exit(1)
+        raise UsageError('No environment file provided. Set the environemnt variable S3CONF '
+                         'or create a config file. Nothing to be done.')
 
     storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
     conf = s3conf.S3Conf(storage=storage)
