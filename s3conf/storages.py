@@ -19,10 +19,24 @@ def strip_s3_path(path):
     return bucket, path
 
 
-class S3Storage:
+class BaseStorage:
     def __init__(self, settings=None):
-        self._resource = None
         self._settings = settings or Settings()
+
+    def open(self, file_name, stream=None):
+        raise NotImplementedError()
+
+    def write(self, f, file_name):
+        raise NotImplementedError()
+
+    def list(self, path):
+        raise NotImplementedError()
+
+
+class S3Storage(BaseStorage):
+    def __init__(self, settings=None):
+        super(__class__, self).__init__(settings=settings)
+        self._resource = None
 
     def get_resource(self):
         logger.debug('Getting S3 resource')
@@ -74,7 +88,7 @@ class S3Storage:
                 yield strip_prefix(obj.key, path)
 
 
-class LocalStorage:
+class LocalStorage(BaseStorage):
     def _validate_path(self, path):
         if path.startswith('s3://'):
             raise ValueError('LocalStorage can not process S3 paths.')
@@ -101,3 +115,15 @@ class LocalStorage:
         else:
             # the relative path of a file to itself is empty
             yield ''
+
+
+STORAGES = {
+    's3': S3Storage,
+    'local': LocalStorage,
+}
+
+
+def get_storage(storage, settings=None):
+    if not isinstance(storage, BaseStorage):
+        return STORAGES[storage](settings=settings)
+    return storage
