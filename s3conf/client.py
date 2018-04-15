@@ -1,5 +1,4 @@
 import logging
-import sys
 
 import click
 from click.exceptions import UsageError
@@ -51,7 +50,7 @@ def main(ctx, edit, global_settings):
                 logger.error(e)
             return
         else:
-            raise UsageError('Edit should not be called with a subcommand.', ctx)
+            raise UsageError('Edit should not be called with a subcommand.')
     # manually call help in case no relevant settings were defined
     if ctx.invoked_subcommand is None:
         click.echo(main.get_help(ctx))
