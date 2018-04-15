@@ -2,13 +2,14 @@ import os
 import logging
 import shlex
 
-import click
 import editor
-from editor import get_editor
-from editor import get_editor_args
+import click
+from editor import get_editor, get_editor_args
 from click_log import core
 
 
+# apply patches that allow editor with args
+# https://github.com/fmoo/python-editor/pull/15
 def _get_editor():
     executable = get_editor()
     return shlex.split(executable)[0]
