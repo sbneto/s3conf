@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 GLOBAL_CONFIG_FILE = '~/.s3conf'
-LOCAL_CONFIG_FILE = './.s3conf/config'
+LOCAL_CONFIG_FOLDER = './.s3conf'
+LOCAL_CONFIG_FILE = os.path.join(LOCAL_CONFIG_FOLDER, 'config')
 
 
 class EnvironmentResolver:
@@ -37,8 +38,8 @@ class ConfigFileResolver:
     def config(self, value):
         self._config = value
 
-    def get(self, item, default=None):
-        return self.config.get(self.section, item, fallback=default)
+    def get(self, item, default=None, section=None):
+        return self.config.get(section or self.section, item, fallback=default)
 
     def edit(self):
         if os.path.isfile(self.config_file):
@@ -52,7 +53,10 @@ class ConfigFileResolver:
                 with open(self.config_file, 'wb') as f:
                     f.write(data)
             else:
-                raise ValueError('Nothing to write. Config file not created.')
+                logger.warning('Nothing to write. Config file not created.')
+
+    def sections(self):
+        return self.config.sections()
 
 
 class Settings:
@@ -68,6 +72,7 @@ class Settings:
             if value:
                 break
         else:
+            logger.debug('Entry %s not found', item)
             raise KeyError()
         logger.debug('Entry %s has value %s', item, value)
         return value
@@ -76,4 +81,5 @@ class Settings:
         try:
             return self[item]
         except KeyError:
+            logger.debug('Key %s not found, returning default %s', item, default)
             return default
