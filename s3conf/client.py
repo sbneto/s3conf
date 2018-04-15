@@ -2,62 +2,62 @@ import logging
 
 import click
 from click.exceptions import UsageError
+import click_log
 
 from . import s3conf
 from . import storages
-from .config import Settings, ConfigFileResolver
+from . import config
 
 
-logger = logging.getLogger()
-logger.setLevel('WARNING')
+logger = logging.getLogger(__name__)
 
 
-class MyGroup(click.Group):
-    def parse_args(self, ctx, args):
-        if args and args[0] in self.commands:
-            if len(args) == 1 or args[1] not in self.commands:
-                for param in self.params:
-                    if param.param_type_name == 'argument':
-                        args.insert(0, param.default if param.default is not None else '')
-                        break
-        super(__class__, self).parse_args(ctx, args)
+def get_settings(section=None):
+    if section:
+        section = config.Settings(section=section)
+    else:
+        section = config.Settings()
+    return section
 
 
-@click.group(cls=MyGroup, invoke_without_command=True)
+@click.group(invoke_without_command=True)
 @click.version_option()
-@click.argument('settings',
-                default='default')
-@click.option('--config-file',
-              default='~/.s3conf/config.ini',
-              show_default=True,
-              help='Path of the config file to be used.')
-@click.option('--debug', is_flag=True)
 @click.option('--edit', '-e', is_flag=True)
+@click.option('--global', 'global_settings', is_flag=True)
 @click.pass_context
-def main(ctx, settings, config_file, debug, edit):
+# this sets the log level for this app only
+@click_log.simple_verbosity_option('s3conf')
+def main(ctx, edit, global_settings):
     """
     Simple command line tool to help manage environment variables stored in a S3-like system. Facilitates editing text
     files remotely stored, as well as downloading and uploading files.
     """
-    if debug:
-        logger.setLevel('DEBUG')
+    # configs this module logger to behave properly
+    # logger messages will go to stderr (check __init__.py/patch.py)
+    # client output should be generated with click.echo() to go to stdout
+    click_log.basic_config('s3conf')
+    logger.debug('Running main entrypoint')
     if edit:
         if ctx.invoked_subcommand is None:
             try:
-                ConfigFileResolver().edit()
+                if global_settings:
+                    logger.debug('Using config file %s', config.GLOBAL_CONFIG_FILE)
+                    config.ConfigFileResolver(config.GLOBAL_CONFIG_FILE).edit()
+                else:
+                    logger.debug('Using config file %s', config.LOCAL_CONFIG_FILE)
+                    config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).edit()
             except ValueError as e:
-                click.echo(str(e), err=True)
+                logger.error(e)
             return
         else:
             raise UsageError('Edit should not be called with a subcommand.', ctx)
     # manually call help in case no relevant settings were defined
     if ctx.invoked_subcommand is None:
         click.echo(main.get_help(ctx))
-    else:
-        ctx.obj = {'settings': Settings(config_file=config_file, section=settings)}
 
 
 @main.command('env')
+@click.argument('settings', required=False)
 @click.option('--file',
               '-f',
               envvar='S3CONF',
@@ -93,12 +93,13 @@ def main(ctx, settings, config_file, debug, edit):
 @click.option('--edit',
               '-e',
               is_flag=True)
-@click.pass_context
-def env(ctx, file, storage, map_files, mapping, phusion, phusion_path, quiet, edit):
-    settings = ctx.obj['settings']
+def env(settings, file, storage, map_files, mapping, phusion, phusion_path, quiet, edit):
+    logger.debug('Running env command')
+    settings = get_settings(settings)
     file = file or settings.get('S3CONF')
     if not file:
-        click.echo('No environment file provided. Nothing to be done.', err=True)
+        logger.error('No environment file provided. Set the environemnt variable S3CONF '
+                     'or create a config file. Nothing to be done.')
         return
 
     storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
@@ -130,8 +131,7 @@ def env(ctx, file, storage, map_files, mapping, phusion, phusion_path, quiet, ed
               default='s3',
               show_default=True,
               help='Storage driver to use. Local driver is mainly for testing purpouses.')
-@click.pass_context
-def env(ctx, remote_path, local_path, storage):
+def env(remote_path, local_path, storage):
     """
     Download a file or folder from the S3-like service.
 
@@ -142,7 +142,7 @@ def env(ctx, remote_path, local_path, storage):
     If REMOTE_PATH does not have a trailing slash, it is considered to be a file, and LOCAL_PATH should be a file as
     well.
     """
-    settings = ctx.obj['settings']
+    settings = get_settings()
     storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
     conf = s3conf.S3Conf(storage=storage)
     conf.download(remote_path, local_path)
@@ -156,8 +156,7 @@ def env(ctx, remote_path, local_path, storage):
               default='s3',
               show_default=True,
               help='Storage driver to use. Local driver is mainly for testing purpouses.')
-@click.pass_context
-def env(ctx, remote_path, local_path, storage):
+def env(remote_path, local_path, storage):
     """
     Upload a file or folder to the S3-like service.
 
@@ -165,7 +164,7 @@ def env(ctx, remote_path, local_path, storage):
 
     If LOCAL_PATH is a file, the REMOTE_PATH file is created with the same contents.
     """
-    settings = ctx.obj['settings']
+    settings = get_settings()
     storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
     conf = s3conf.S3Conf(storage=storage)
     conf.upload(local_path, remote_path)
