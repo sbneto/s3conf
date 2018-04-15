@@ -6,8 +6,10 @@ from tempfile import NamedTemporaryFile
 
 import editor
 
-from .storages import S3Storage, strip_prefix
+from .storages import get_storage, strip_prefix
 from .utils import prepare_path
+from .config import Settings
+from . import exceptions
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -51,20 +53,13 @@ def phusion_dump(environment, path):
             f.write(v + '\n')
 
 
-def setup_environment(
-        file_name=None,
-        storage=None,
-        dump=False,
-        dump_path='/etc/container_environment',
-        **kwargs
-):
+def setup_environment(storage='s3',
+                      dump=False,
+                      dump_path='/etc/container_environment',
+                      **kwargs):
     try:
-        if not file_name:
-            file_name = os.environ.get('S3CONF')
-        if not file_name:
-            raise ValueError('No environment file provided. Nothing to be done.')
         conf = S3Conf(storage=storage)
-        env_vars = conf.environment_file(file_name, **kwargs)
+        env_vars = conf.environment_file(**kwargs)
         for var_name, var_value in env_vars.items():
             print('{}={}'.format(var_name, var_value))
         if dump:
@@ -77,16 +72,25 @@ def setup_environment(
 
 
 class S3Conf:
-    def __init__(self, storage=None):
-        self.storage = storage or S3Storage()
+    def __init__(self, storage='s3', settings=None):
+        self.settings = settings or Settings()
+        self.storage = get_storage(storage, settings=self.settings)
 
-    def map_files(self, file_list):
-        logger.info('Mapping following files: %s', file_list)
-        files = unpack_list(file_list)
+    @property
+    def environment_file_path(self):
+        # resolving environment file path
+        file_name = self.settings.get('S3CONF')
+        if not file_name:
+            logger.error('Environemnt file name is not defined or is empty.')
+            raise exceptions.EnvfilePathNotDefinedError()
+
+    def map_files(self, files, root_dir=None):
         for file_source, file_target in files:
-            self.download(file_source, file_target)
+            self.download(file_source, file_target, root_dir=root_dir)
 
-    def download(self, path, path_target):
+    def download(self, path, path_target, root_dir=None):
+        if root_dir:
+            path_target = os.path.join(root_dir, path_target.strip('/'))
         logger.info('Downloading %s to %s', path, path_target)
         for file_path in self.storage.list(path):
             if path.endswith('/') or not path:
@@ -99,7 +103,9 @@ class S3Conf:
                 # stream=f reads the data into f and returns f as our open file
                 self.storage.open(os.path.join(path, file_path).rstrip('/'), stream=f)
 
-    def upload(self, path, path_target):
+    def upload(self, path, path_target, root_dir=None):
+        if root_dir:
+            path = os.path.join(root_dir, path.strip('/'))
         logger.info('Uploading %s to %s', path, path_target)
         if os.path.isdir(path):
             for root, dirs, files in os.walk(path):
@@ -110,17 +116,16 @@ class S3Conf:
         else:
             self.storage.write(open(path, 'rb'), path_target)
 
-    def environment_file(self, file_name, map_files=False, mapping='S3CONF_MAP', set_environment=False):
-        logger.info('Loading configs from {}'.format(str(file_name)))
-        if not file_name:
-            logger.info('s3conf file_name is not defined or is empty, skipping S3 environment setup.')
-            return {}
+    def environment_file(self, map_files=False, mapping='S3CONF_MAP', set_environment=False):
+        logger.info('Loading configs from {}'.format(self.environment_file_path))
         try:
-            env_vars = dict(parse_dotenv(StringIO(str(self.storage.open(file_name).read(), 'utf-8'))))
+            env_vars = dict(parse_dotenv(StringIO(str(self.storage.open(self.environment_file_path).read(), 'utf-8'))))
             if map_files:
                 files_list = env_vars.get(mapping)
                 if files_list:
-                    self.map_files(files_list)
+                    logger.info('Mapping following files: %s', files_list)
+                    files = unpack_list(files_list)
+                    self.map_files(files)
             if set_environment:
                 for k, v in env_vars.items():
                     os.environ[k] = v
@@ -129,12 +134,12 @@ class S3Conf:
             logger.error('s3conf was unable to load the environment variables: %s', e)
             raise e
 
-    def edit(self, file_name):
+    def edit(self):
         with NamedTemporaryFile(mode='rb+', buffering=0) as f:
-            original_data = self.storage.open(file_name).read()
+            original_data = self.storage.open(self.environment_file_path).read()
             f.write(original_data)
             edited_data = editor.edit(filename=f.name)
             if edited_data != original_data:
-                self.upload(f.name, file_name)
+                self.upload(f.name, self.environment_file_path)
             else:
-                raise ValueError('File not changed. Nothing to upload.')
+                logger.warning('File not changed. Nothing to upload.')
