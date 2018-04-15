@@ -1,12 +1,14 @@
 import logging
+from os import path
+from shutil import rmtree
 
 import click
 from click.exceptions import UsageError
 import click_log
 
 from . import s3conf
-from . import storages
 from . import config
+from . import exceptions
 
 
 logger = logging.getLogger(__name__)
@@ -39,15 +41,12 @@ def main(ctx, edit, global_settings):
     logger.debug('Running main entrypoint')
     if edit:
         if ctx.invoked_subcommand is None:
-            try:
-                if global_settings:
-                    logger.debug('Using config file %s', config.GLOBAL_CONFIG_FILE)
-                    config.ConfigFileResolver(config.GLOBAL_CONFIG_FILE).edit()
-                else:
-                    logger.debug('Using config file %s', config.LOCAL_CONFIG_FILE)
-                    config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).edit()
-            except ValueError as e:
-                logger.error(e)
+            if global_settings:
+                logger.debug('Using config file %s', config.GLOBAL_CONFIG_FILE)
+                config.ConfigFileResolver(config.GLOBAL_CONFIG_FILE).edit()
+            else:
+                logger.debug('Using config file %s', config.LOCAL_CONFIG_FILE)
+                config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).edit()
             return
         else:
             raise UsageError('Edit should not be called with a subcommand.')
@@ -68,11 +67,6 @@ def main(ctx, edit, global_settings):
               is_flag=True,
               help='If defined, set the environment during the execution. '
                    'Note that this does not set the environment of the calling process.')
-@click.option('--mapping',
-              default='S3CONF_MAP',
-              show_default=True,
-              help='Enviroment variable in the "path" file that contains the file mappings to be '
-                   'done if the flag --map-files is defined.')
 @click.option('--phusion',
               is_flag=True,
               help='If set, dumps variables to --dump-path in for format used by the phusion docker image. '
@@ -88,34 +82,26 @@ def main(ctx, edit, global_settings):
 @click.option('--edit',
               '-e',
               is_flag=True)
-def env(settings, storage, map_files, mapping, phusion, phusion_path, quiet, edit):
-    logger.debug('Running env command')
-    settings = get_settings(settings)
+def env(settings, storage, map_files, phusion, phusion_path, quiet, edit):
     try:
-        file = settings['S3CONF']
-    except KeyError:
+        logger.debug('Running env command')
+        settings = get_settings(settings)
+        conf = s3conf.S3Conf(storage=storage, settings=settings)
+
+        if edit:
+            conf.edit()
+        else:
+            env_vars = conf.get_variables()
+            if env_vars.get('S3CONF_MAP') and map_files:
+                conf.map_files(env_vars.get('S3CONF_MAP'))
+            if not quiet:
+                for var_name, var_value in sorted(env_vars.items(), key=lambda x: x[0]):
+                    click.echo('{}={}'.format(var_name, var_value))
+            if phusion:
+                s3conf.phusion_dump(env_vars, phusion_path)
+    except exceptions.EnvfilePathNotDefinedError:
         raise UsageError('No environment file provided. Set the environemnt variable S3CONF '
                          'or create a config file. Nothing to be done.')
-
-    storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
-    conf = s3conf.S3Conf(storage=storage)
-
-    if edit:
-        try:
-            conf.edit(file)
-        except ValueError as e:
-            logger.error(e)
-    else:
-        env_vars = conf.environment_file(
-            file,
-            map_files=map_files,
-            mapping=mapping
-        )
-        if not quiet:
-            for var_name, var_value in sorted(env_vars.items(), key=lambda x: x[0]):
-                click.echo('{}={}'.format(var_name, var_value))
-        if phusion:
-            s3conf.phusion_dump(env_vars, phusion_path)
 
 
 @main.command('download')
@@ -126,7 +112,7 @@ def env(settings, storage, map_files, mapping, phusion, phusion_path, quiet, edi
               default='s3',
               show_default=True,
               help='Storage driver to use. Local driver is mainly for testing purpouses.')
-def env(remote_path, local_path, storage):
+def download(remote_path, local_path, storage):
     """
     Download a file or folder from the S3-like service.
 
@@ -137,8 +123,6 @@ def env(remote_path, local_path, storage):
     If REMOTE_PATH does not have a trailing slash, it is considered to be a file, and LOCAL_PATH should be a file as
     well.
     """
-    settings = get_settings()
-    storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
     conf = s3conf.S3Conf(storage=storage)
     conf.download(remote_path, local_path)
 
@@ -151,7 +135,7 @@ def env(remote_path, local_path, storage):
               default='s3',
               show_default=True,
               help='Storage driver to use. Local driver is mainly for testing purpouses.')
-def env(remote_path, local_path, storage):
+def upload(remote_path, local_path, storage):
     """
     Upload a file or folder to the S3-like service.
 
@@ -159,10 +143,55 @@ def env(remote_path, local_path, storage):
 
     If LOCAL_PATH is a file, the REMOTE_PATH file is created with the same contents.
     """
-    settings = get_settings()
-    storage = storages.S3Storage(settings=settings) if storage == 's3' else storages.LocalStorage()
     conf = s3conf.S3Conf(storage=storage)
     conf.upload(local_path, remote_path)
+
+
+@main.command('clone')
+@click.option('--storage',
+              type=click.Choice(['s3', 'local']),
+              default='s3',
+              show_default=True,
+              help='Storage driver to use. Local driver is mainly for testing purpouses.')
+def clone(storage):
+    local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
+
+    for section in local_resolver.sections():
+        settings = get_settings(section=section)
+        # removing environment resolver, we only want config file onwards on our chain
+        settings.resolvers = settings.resolvers[1:]
+
+        # preparing paths
+        s3conf_env_file = settings['S3CONF']
+        local_root = path.join(config.LOCAL_CONFIG_FOLDER, section)
+        rmtree(local_root, ignore_errors=True)
+
+        # running operations
+        conf = s3conf.S3Conf(storage=storage, settings=settings)
+        conf.download(s3conf_env_file, path.basename(s3conf_env_file), root_dir=local_root)
+
+
+@main.command('push')
+@click.option('--storage',
+              type=click.Choice(['s3', 'local']),
+              default='s3',
+              show_default=True,
+              help='Storage driver to use. Local driver is mainly for testing purpouses.')
+def clone(storage):
+    local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
+
+    for section in local_resolver.sections():
+        settings = get_settings(section=section)
+        # removing environment resolver, we only want config file onwards on our chain
+        settings.resolvers = settings.resolvers[1:]
+
+        # preparing paths
+        s3conf_env_file = settings['S3CONF']
+        local_root = path.join(config.LOCAL_CONFIG_FOLDER, section)
+
+        # running operations
+        conf = s3conf.S3Conf(storage=storage, settings=settings)
+        conf.upload(path.basename(s3conf_env_file), s3conf_env_file, root_dir=local_root)
 
 
 if __name__ == '__main__':
