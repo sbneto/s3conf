@@ -2,11 +2,11 @@ import os
 import logging
 from shutil import rmtree
 
+import pytest
 from click.testing import CliRunner
 
-from s3conf import client
-from s3conf.s3conf import S3Conf, setup_environment
-from s3conf.storages import LocalStorage
+from s3conf import client, exceptions
+from s3conf.s3conf import S3Conf
 from s3conf.utils import prepare_path
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
@@ -18,7 +18,9 @@ def test_cli():
     os.environ['LC_ALL'] = 'C.UTF-8'
     os.environ['LANG'] = 'C.UTF-8'
     runner = CliRunner()
-    result = runner.invoke(client.main, ['env', '--help'])
+    # result = runner.invoke(client.main, ['env', '--help'])
+    # result = runner.invoke(client.main, ['clone'])
+    # result = runner.invoke(client.main, ['push'])
 
 
 def test_prepare_empty_path():
@@ -29,8 +31,9 @@ def test_generate_dict():
     try:
         open('tests/test.env', 'w').write('TEST=123\nTEST2=456\n')
 
-        s3 = S3Conf(storage=LocalStorage())
-        data = s3.environment_file('tests/test.env')
+        os.environ['S3CONF'] = 'tests/test.env'
+        s3 = S3Conf(storage='local')
+        data = s3.get_variables()
 
         assert 'TEST' in data
         assert 'TEST2' in data
@@ -52,7 +55,7 @@ def test_upload_files():
         open('tests/local/subfolder/file3.txt', 'w').write('file3')
         open('tests/local/subfolder/file4.txt', 'w').write('file4')
 
-        s3 = S3Conf(storage=LocalStorage())
+        s3 = S3Conf(storage='local')
         s3.upload('tests/local/', 'tests/remote/')
 
         assert os.path.isfile('tests/remote/file1.txt')
@@ -73,7 +76,7 @@ def test_download_files():
         open('tests/remote/subfolder/file3.txt', 'w').write('file3')
         open('tests/remote/subfolder/file4.txt', 'w').write('file4')
 
-        s3 = S3Conf(storage=LocalStorage())
+        s3 = S3Conf(storage='local')
         s3.download('tests/remote/', 'tests/local/')
 
         assert os.path.isfile('tests/local/file1.txt')
@@ -85,22 +88,11 @@ def test_download_files():
         rmtree('tests/remote', ignore_errors=True)
 
 
-def test_empty_setup_environment():
-    try:
-        open('tests/test.env', 'w').write('TEST=123\nTEST2=456\n')
-        setup_environment(file_name='tests/test.env', storage=LocalStorage())
-    finally:
-        try:
-            os.remove('tests/test.env')
-        except FileNotFoundError:
-            pass
-
-
 def test_no_file_defined():
-    try:
-        setup_environment(storage=LocalStorage(), map_files=True)
-    except ValueError as e:
-        assert str(e) == 'LocalStorage can not process S3 paths.'
+    with pytest.raises(exceptions.EnvfilePathNotDefinedError):
+        del os.environ['S3CONF']
+        s3 = S3Conf(storage='local')
+        s3.get_variables()
 
 
 def test_setup_environment():
@@ -119,7 +111,10 @@ def test_setup_environment():
         open('tests/remote/subfolder/file3.txt', 'w').write('file3')
         open('tests/remote/subfolder/file4.txt', 'w').write('file4')
 
-        setup_environment(file_name='tests/test.env', storage=LocalStorage(), map_files=True)
+        s3 = S3Conf(storage='local')
+        os.environ['S3CONF'] = 'tests/test.env'
+        env_vars = s3.get_variables()
+        s3.map_files(env_vars.get('S3CONF_MAP'))
 
         assert os.path.isfile('tests/local/file1.txt')
         assert os.path.isfile('tests/local/subfolder/file3.txt')
