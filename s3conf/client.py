@@ -163,6 +163,11 @@ def upload(remote_path, local_path, storage):
               show_default=True,
               help='Storage driver to use. Local driver is mainly for testing purpouses.')
 def clone(storage):
+    """
+    For each section defined in the local config file, creates a folder inside the local config folder
+    named after the section. Downloads the environemnt file defined by the S3CONF variable for this section
+    to this folder.
+    """
     local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
 
     for section in local_resolver.sections():
@@ -186,7 +191,12 @@ def clone(storage):
               default='s3',
               show_default=True,
               help='Storage driver to use. Local driver is mainly for testing purpouses.')
-def clone(storage):
+def push(storage):
+    """
+    For each section defined in the local config file, look up for a folder inside the local config folder
+    named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
+    to the remote S3CONF path.
+    """
     local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
 
     for section in local_resolver.sections():
