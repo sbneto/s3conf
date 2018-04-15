@@ -14,66 +14,78 @@ pip install s3conf
 
 ## Configuration
 
-This package provides a command line client `s3conf` that helps us to manipulate enviroment variables. It assumes the
-environemnt variable `S3CONF` is available and points to a file in a S3-like bucket. Eg.:
+This package provides a command line client `s3conf` that helps us to manipulate enviroment variables.
+It looks for a configuration variable named `S3CONF` that should point to a file in a S3-like bucket. Eg.:
 
 ```bash
 export S3CONF=s3://mybucket/myfile.env
 ```
 
-The client will search for authentication variables, if they are provided. The following example shows the allowed
-variables.
+If you already have a `aws-cli` working, this should already be enough to get you started.
+
+## Credentials Resolution
+
+In order to find the `S3CONF` variable and other credentials variables, it uses a credentials resolution 
+that flows like this:
+
+1) Environment Variables
+2) Configuration File in the current folder: `./.s3conf/config`
+3) Configuration File in the user folder: `~/.s3conf`
+4) Boto3 configuration resolution
+
+The client will search for these authentication variables, if they are provided:
 
 ```bash
-AWS_ACCESS_KEY_ID=***access_key***
-AWS_SECRET_ACCESS_KEY=***secret_access_key***
-AWS_S3_REGION_NAME=***region_name***
-AWS_S3_ENDPOINT_URL=***endpoint_url***
+S3CONF_ACCESS_KEY_ID=***access_key***
+S3CONF_SECRET_ACCESS_KEY=***secret_access_key***
+S3CONF_S3_REGION_NAME=***region_name***
+S3CONF_S3_ENDPOINT_URL=***endpoint_url***
 ```
 
-If these variables are not provided, the usual `boto3` credentials resolution process is used. These variables are
-particularly useful for non-aws blob storage services compatible with S3, such as DigitalOcean Spaces.
+These variables map to their `AWS_` counterpart that are used for regular Boto3 configuration.
+The cliendt also searchs for the regular `AWS_` variables, but the client variables take precedence. 
+They are particularly useful when using non-aws blob storage services compatible with S3, such as DigitalOcean Spaces,
+without messing your AWS credentials.
 
-If these variables are not defined, the client fallsback to a config file stored in `~/.s3conf/config.ini`, if it is
-available. A convenient way to edit this file is using the client itself:
+Each variable lookup will follow the resolution order and the client will use the first one it finds, 
+meaning you can keep the `S3CONF` variable defined in you working directory and your credentials 
+in your user folder, for example.
+
+You can create multiple sections in your current folder Configuration File:
+
+```ini
+[dev]
+S3CONF=s3://my-dev-bucket/myfile.env
+
+[prod]
+S3CONF=s3://my-prod-bucket/myfile.env
+```
+
+And inform the client to use the rigth section:
+
+```bash
+s3conf env dev
+```
+
+## Editing Your Config Files
+
+A convenient way to edit the Configuration File in your current folder is to use the following command:
 
 ```bash
 s3conf -e
 ```
 
-This will open your default file editor, much like as how `crontab -e` works. 
-The config file should have the following structure:
-
-```
-[default]
-S3CONF=s3://mybucket/myfile.env
-AWS_ACCESS_KEY_ID=***access_key***
-AWS_SECRET_ACCESS_KEY=***secret_access_key***
-AWS_S3_REGION_NAME=***region_name***
-AWS_S3_ENDPOINT_URL=***endpoint_url***
-```
-
-Eniroment variables have precedence over variables defined in the config file.
-
-If you create a section other than the `default` section in the ini file, you can use it passing it
-as an argument.
-
-```
-[my_section]
-S3CONF=s3://mybucket/myfile.env
-AWS_ACCESS_KEY_ID=***access_key***
-AWS_SECRET_ACCESS_KEY=***secret_access_key***
-AWS_S3_REGION_NAME=***region_name***
-AWS_S3_ENDPOINT_URL=***endpoint_url***
-```
+This will open your default file editor, much like as how `crontab -e` works. To edit the Configuration File 
+in your user's folder, you can use the following command:
 
 ```bash
-s3conf my_section env
+s3conf -e --global
 ```
 
-## Environment File
+## Setting the Environment
 
-Once credentials are in place, geting the data from the file defined in `S3CONF` is fairly simple. 
+Once credentials are in place, we want to get the data from the file defined in the `S3CONF` environment variable.
+This can be achieved with the following command: 
 
 ```bash
 $ s3conf env
@@ -82,21 +94,31 @@ ENV_VAR_2=some_data_2
 ENV_VAR_3=some_data_3
 ```
 
-It should parse the environment file and output its values to be used with export, for instance.
+If you are using the `S3CONF` value from a particular section in your config, you should pass it as well:
+
+```bash
+$ s3conf env dev
+ENV_VAR_1=some_data_1
+ENV_VAR_2=some_data_2
+ENV_VAR_3=some_data_3
+```
+
+The output can be used to set the environment with `export`:
 
 ```bash
 $ export $(s3conf env)
 ```
 
-Since editing the environment file is also common, the client provides a convenient way to do so:
+## Editing Your Environment File
+
+Since editing the environment file is also common, the client provides a convenient way to manipulate it:
 
 ```bash
 s3conf env -e
 ```
 
-This will download the environment file in a temporary file, open your default file editor (much like as 
-`crontab -e` works) and upload the file back to the blob storage service if any edits were made (you can
-edit an arbitrary file if you also pass the `-f path_to_file` to the client).
+This will download the environment file to a temporary file, open your default file editor (much like as 
+`crontab -e` works) and upload the file back to the blob storage service only if edits were made.
 
 ## Mapping Files
 
@@ -168,5 +190,5 @@ your configuration files, and you are good to go (following [Phusion's way to ru
 one-shot commands](https://github.com/phusion/baseimage-docker#oneshot))
 
 ```bash
-docker run --rm -e S3CONF=s3://my-bucket/my.env -e AWS_ACCESS_KEY_ID=***access_key*** -e AWS_SECRET_ACCESS_KEY=***secret_access_key*** sbneto/phusion-python:3.6-env /sbin/my_init -- echo "hello world"
+docker run --rm -e S3CONF=s3://my-bucket/my.env -e S3CONF_ACCESS_KEY_ID=***access_key*** -e S3CONF_SECRET_ACCESS_KEY=***secret_access_key*** sbneto/phusion-python:3.6-env /sbin/my_init -- echo "hello world"
 ```
