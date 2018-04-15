@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/sbneto/s3conf.svg?branch=master)](https://travis-ci.org/sbneto/s3conf)
 
-Utility package to help managing configuration files stored in S3-like services. Needs python 3 to work.
+Utility package to help managing configuration files stored in S3-like services. Needs python3.
 
 # Installation
 
@@ -21,7 +21,7 @@ It looks for a configuration variable named `S3CONF` that should point to a file
 export S3CONF=s3://mybucket/myfile.env
 ```
 
-If you already have a `aws-cli` working, this should already be enough to get you started.
+If you have a `aws-cli` working, this should already be enough to get you started.
 
 ## Credentials Resolution
 
