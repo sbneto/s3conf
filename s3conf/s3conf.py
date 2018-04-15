@@ -87,7 +87,7 @@ class S3Conf:
 
     def download(self, path, path_target, root_dir=None):
         if root_dir:
-            path_target = os.path.join(root_dir, path_target.strip('/'))
+            path_target = os.path.join(root_dir, path_target.lstrip('/'))
         logger.info('Downloading %s to %s', path, path_target)
         for file_path in self.storage.list(path):
             if path.endswith('/') or not path:
@@ -102,7 +102,7 @@ class S3Conf:
 
     def upload(self, path, path_target, root_dir=None):
         if root_dir:
-            path = os.path.join(root_dir, path.strip('/'))
+            path = os.path.join(root_dir, path.lstrip('/'))
         logger.info('Uploading %s to %s', path, path_target)
         if os.path.isdir(path):
             for root, dirs, files in os.walk(path):
