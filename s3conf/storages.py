@@ -41,10 +41,7 @@ class S3Storage:
             )
         return self._resource
 
-    def __call__(self, file_name):
-        return self.read(file_name)
-
-    def _read_file(self, bucket, file_name, stream=None):
+    def _read_file_into_stream(self, bucket, file_name, stream=None):
         s3 = self.get_resource()
         stream = stream or BytesIO()
         s3.Object(bucket, file_name).download_fileobj(stream)
@@ -55,10 +52,13 @@ class S3Storage:
         s3 = self.get_resource()
         s3.Object(bucket, path_target).upload_fileobj(f)
 
-    def read(self, file_name, stream=None):
+    # this is not good, it should return a file like and not mix
+    # a "read-into" functionality with the "open" behavior
+    # but it works for now, must fix this at some point
+    def open(self, file_name, stream=None):
         logger.debug('Reading from %s', file_name)
         bucket, file_name = strip_s3_path(file_name)
-        return self._read_file(bucket, file_name, stream=stream)
+        return self._read_file_into_stream(bucket, file_name, stream=stream)
 
     def write(self, f, file_name):
         logger.debug('Writing to %s', file_name)
@@ -75,16 +75,11 @@ class S3Storage:
 
 
 class LocalStorage:
-    def __call__(self, *args, **kwargs):
-        self._validate_path(args[0])
-        kwargs['mode'] = 'rb'
-        return open(*args, **kwargs)
-
     def _validate_path(self, path):
         if path.startswith('s3://'):
             raise ValueError('LocalStorage can not process S3 paths.')
 
-    def read(self, file_name, stream=None):
+    def open(self, file_name, stream=None):
         self._validate_path(file_name)
         stream = stream or BytesIO()
         with open(file_name, 'rb') as f:

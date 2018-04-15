@@ -96,8 +96,8 @@ class S3Conf:
             prepare_path(target_name)
             with open(target_name, 'wb') as f:
                 # join might add a trailing slash, but we know it is a file, so we remove it
-                # reads directly to the file stream
-                self.storage.read(os.path.join(path, file_path).rstrip('/'), stream=f)
+                # stream=f reads the data into f and returns f as our open file
+                self.storage.open(os.path.join(path, file_path).rstrip('/'), stream=f)
 
     def upload(self, path, path_target):
         logger.info('Uploading %s to %s', path, path_target)
@@ -110,14 +110,13 @@ class S3Conf:
         else:
             self.storage.write(open(path, 'rb'), path_target)
 
-    def environment_file(self, file_name, map_files=False, mapping='S3CONF_MAP',
-                         set_environment=False):
+    def environment_file(self, file_name, map_files=False, mapping='S3CONF_MAP', set_environment=False):
         logger.info('Loading configs from {}'.format(str(file_name)))
         if not file_name:
             logger.info('s3conf file_name is not defined or is empty, skipping S3 environment setup.')
             return {}
         try:
-            env_vars = dict(parse_dotenv(StringIO(str(self.storage(file_name).read(), 'utf-8'))))
+            env_vars = dict(parse_dotenv(StringIO(str(self.storage.open(file_name).read(), 'utf-8'))))
             if map_files:
                 files_list = env_vars.get(mapping)
                 if files_list:
@@ -132,7 +131,7 @@ class S3Conf:
 
     def edit(self, file_name):
         with NamedTemporaryFile(mode='rb+', buffering=0) as f:
-            original_data = self.storage(file_name).read()
+            original_data = self.storage.open(file_name).read()
             f.write(original_data)
             edited_data = editor.edit(filename=f.name)
             if edited_data != original_data:
