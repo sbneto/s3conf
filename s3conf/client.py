@@ -104,7 +104,7 @@ def env(settings, storage, map_files, mapping, phusion, phusion_path, quiet, edi
         try:
             conf.edit(file)
         except ValueError as e:
-            click.echo(str(e), err=True)
+            logger.error(e)
     else:
         env_vars = conf.environment_file(
             file,
