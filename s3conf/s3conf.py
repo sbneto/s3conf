@@ -15,25 +15,19 @@ logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
 
 
-# inspired by dotenv.main.parse_dotenv(), but operating over a file descriptor
-# https://github.com/theskumar/python-dotenv/blob/master/dotenv/main.py
-def parse_dotenv(f):
-    for line in f:
+def parse_dotenv(data):
+    for line in data.splitlines():
         line = line.strip()
-        if not line or line.startswith('#') or '=' not in line:
-            continue
-        k, v = line.split('=', 1)
+        if line and not line.startswith('#') and '=' in line:
+            k, _, v = line.partition('=')
 
-        # Remove any leading and trailing spaces in key, value
-        k, v = k.strip(), v.strip().encode('unicode-escape').decode('ascii')
+            # Remove any leading and trailing spaces in key, value
+            k, v = k.strip(), v.strip().encode('unicode-escape').decode('ascii')
 
-        if len(v) > 0:
-            quoted = v[0] == v[len(v) - 1] in ['"', "'"]
-
-            if quoted:
+            if v and v[0] == v[-1] in ['"', "'"]:
                 v = __escape_decoder(v[1:-1])[0]
 
-        yield k, v
+            yield k, v
 
 
 def unpack_list(files_list):
@@ -59,7 +53,7 @@ def setup_environment(storage='s3',
                       **kwargs):
     try:
         conf = S3Conf(storage=storage)
-        env_vars = conf.environment_file(**kwargs)
+        env_vars = conf.get_variables(**kwargs)
         for var_name, var_value in env_vars.items():
             print('{}={}'.format(var_name, var_value))
         if dump:
@@ -83,8 +77,11 @@ class S3Conf:
         if not file_name:
             logger.error('Environemnt file name is not defined or is empty.')
             raise exceptions.EnvfilePathNotDefinedError()
+        return file_name
 
     def map_files(self, files, root_dir=None):
+        if isinstance(files, str):
+            files = unpack_list(files)
         for file_source, file_target in files:
             self.download(file_source, file_target, root_dir=root_dir)
 
@@ -116,23 +113,10 @@ class S3Conf:
         else:
             self.storage.write(open(path, 'rb'), path_target)
 
-    def environment_file(self, map_files=False, mapping='S3CONF_MAP', set_environment=False):
+    def get_variables(self):
         logger.info('Loading configs from {}'.format(self.environment_file_path))
-        try:
-            env_vars = dict(parse_dotenv(StringIO(str(self.storage.open(self.environment_file_path).read(), 'utf-8'))))
-            if map_files:
-                files_list = env_vars.get(mapping)
-                if files_list:
-                    logger.info('Mapping following files: %s', files_list)
-                    files = unpack_list(files_list)
-                    self.map_files(files)
-            if set_environment:
-                for k, v in env_vars.items():
-                    os.environ[k] = v
-            return env_vars
-        except Exception as e:
-            logger.error('s3conf was unable to load the environment variables: %s', e)
-            raise e
+        file_data = str(self.storage.open(self.environment_file_path).read(), 'utf-8')
+        return dict(parse_dotenv(file_data))
 
     def edit(self):
         with NamedTemporaryFile(mode='rb+', buffering=0) as f:
