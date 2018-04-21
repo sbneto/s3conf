@@ -1,7 +1,6 @@
 import os
 import codecs
 import logging
-from io import StringIO
 from tempfile import NamedTemporaryFile
 
 import editor

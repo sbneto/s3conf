@@ -1,5 +1,7 @@
 import logging
-from os import path
+import subprocess
+import shlex
+import os
 from shutil import rmtree
 
 import click
@@ -117,6 +119,73 @@ def env(section, storage, map_files, phusion, phusion_path, quiet, edit):
         raise UsageError(error_msg + sections_detected)
 
 
+@main.command('exec')
+@click.option('--storage',
+              type=click.Choice(['s3', 'local']),
+              default='s3',
+              show_default=True,
+              help='Storage driver to use. Local driver is mainly for testing purpouses.')
+@click.option('--map-files',
+              '-m',
+              is_flag=True,
+              help='If defined, tries to map files from the storage to the local drive as defined by '
+                   'the variable S3CONF_MAP read from the S3CONF file.')
+@click.argument('section',
+                required=False)
+# to use option-like arguments use "--"
+# http://click.pocoo.org/6/arguments/#option-like-arguments
+@click.argument('command',
+                required=False,
+                nargs=-1,
+                type=click.UNPROCESSED)
+@click.pass_context
+def exec_command(ctx, section, command, storage, map_files):
+    """
+    Sets the process environemnt and executes the [COMMAND] in the same context. Does not modify the current shell
+    environment.
+
+    If the [COMMAND] has option-like arguments, use the standard POSIX pattern "--" to separate options
+    from arguments. Considering our configuration in the "dev" section, we could write:
+
+    s3conf -v info exec dev -- ping -v google.com
+    """
+    try:
+        logger.debug('Running exec command')
+        existing_sections = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).sections()
+        command = ' '.join(command)
+        if section not in existing_sections:
+            command = '{} {}'.format(section, command) if command else section
+            section = None
+
+        if not command:
+            logger.warning('No command detected.')
+            click.echo(exec_command.get_help(ctx))
+            return
+
+        settings = get_settings(section)
+        conf = s3conf.S3Conf(storage=storage, settings=settings)
+
+        env_vars = conf.get_variables()
+        if env_vars.get('S3CONF_MAP') and map_files:
+            conf.map_files(env_vars.get('S3CONF_MAP'))
+
+        current_env = os.environ.copy()
+        env_vars = current_env.update(env_vars)
+        logger.debug('Executing command "%s"', command)
+        subprocess.run(shlex.split(command), env=env_vars, check=True)
+    except exceptions.EnvfilePathNotDefinedError:
+        error_msg = 'Set the environemnt variable S3CONF or provide a section from an existing config file.'
+        try:
+            sections_detected = ''
+            for section in existing_sections:
+                sections_detected += '    {}\n'.format(section)
+        except FileNotFoundError:
+            pass
+        if sections_detected:
+            sections_detected = '\n\nThe following sections were detected:\n\n' + sections_detected
+        raise UsageError(error_msg + sections_detected)
+
+
 @main.command('download')
 @click.argument('remote_path')
 @click.argument('local_path')
@@ -181,12 +250,12 @@ def clone(storage):
 
         # preparing paths
         s3conf_env_file = settings['S3CONF']
-        local_root = path.join(config.LOCAL_CONFIG_FOLDER, section)
+        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
         rmtree(local_root, ignore_errors=True)
 
         # running operations
         conf = s3conf.S3Conf(storage=storage, settings=settings)
-        conf.download(s3conf_env_file, path.basename(s3conf_env_file), root_dir=local_root)
+        conf.download(s3conf_env_file, os.path.basename(s3conf_env_file), root_dir=local_root)
 
 
 @main.command('push')
@@ -210,11 +279,11 @@ def push(storage):
 
         # preparing paths
         s3conf_env_file = settings['S3CONF']
-        local_root = path.join(config.LOCAL_CONFIG_FOLDER, section)
+        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
 
         # running operations
         conf = s3conf.S3Conf(storage=storage, settings=settings)
-        conf.upload(path.basename(s3conf_env_file), s3conf_env_file, root_dir=local_root)
+        conf.upload(os.path.basename(s3conf_env_file), s3conf_env_file, root_dir=local_root)
 
 
 if __name__ == '__main__':
