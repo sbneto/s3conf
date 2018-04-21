@@ -170,9 +170,9 @@ def exec_command(ctx, section, command, storage, map_files):
             conf.map_files(env_vars.get('S3CONF_MAP'))
 
         current_env = os.environ.copy()
-        env_vars = current_env.update(env_vars)
+        current_env.update(env_vars)
         logger.debug('Executing command "%s"', command)
-        subprocess.run(shlex.split(command), env=env_vars, check=True)
+        subprocess.run(shlex.split(command), env=current_env, check=True)
     except exceptions.EnvfilePathNotDefinedError:
         error_msg = 'Set the environemnt variable S3CONF or provide a section from an existing config file.'
         try:
