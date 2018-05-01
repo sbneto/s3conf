@@ -263,10 +263,11 @@ def downsync(storage, map_files):
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         conf.download(s3conf_env_file, os.path.basename(s3conf_env_file), root_dir=local_root)
 
-        env_vars = conf.get_variables()
-        local_mapping_root = os.path.join(local_root, 'root')
-        if env_vars.get('S3CONF_MAP') and map_files:
-            conf.map_files(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
+        if map_files:
+            env_vars = conf.get_variables()
+            local_mapping_root = os.path.join(local_root, 'root')
+            if env_vars.get('S3CONF_MAP'):
+                conf.map_files(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
 
 
 @main.command('upsync')
