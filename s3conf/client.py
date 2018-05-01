@@ -229,13 +229,19 @@ def upload(remote_path, local_path, storage):
     conf.upload(local_path, remote_path)
 
 
-@main.command('clone')
+@main.command('downsync')
 @click.option('--storage',
               type=click.Choice(['s3', 'local']),
               default='s3',
               show_default=True,
               help='Storage driver to use. Local driver is mainly for testing purpouses.')
-def clone(storage):
+@click.option('--map-files',
+              '-m',
+              is_flag=True,
+              help='If defined, tries to map files from the storage to the local drive as defined by '
+                   'the variable S3CONF_MAP read from the S3CONF file using the config folder as the '
+                   'root directory.')
+def downsync(storage, map_files):
     """
     For each section defined in the local config file, creates a folder inside the local config folder
     named after the section. Downloads the environemnt file defined by the S3CONF variable for this section
@@ -257,14 +263,25 @@ def clone(storage):
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         conf.download(s3conf_env_file, os.path.basename(s3conf_env_file), root_dir=local_root)
 
+        env_vars = conf.get_variables()
+        local_mapping_root = os.path.join(local_root, 'root')
+        if env_vars.get('S3CONF_MAP') and map_files:
+            conf.map_files(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
 
-@main.command('push')
+
+@main.command('upsync')
 @click.option('--storage',
               type=click.Choice(['s3', 'local']),
               default='s3',
               show_default=True,
               help='Storage driver to use. Local driver is mainly for testing purpouses.')
-def push(storage):
+@click.option('--map-files',
+              '-m',
+              is_flag=True,
+              help='If defined, tries to map files from the storage to the local drive as defined by '
+                   'the variable S3CONF_MAP read from the S3CONF file using the config folder as the '
+                   'root directory.')
+def upsync(storage, map_files):
     """
     For each section defined in the local config file, look up for a folder inside the local config folder
     named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
