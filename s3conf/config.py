@@ -61,10 +61,11 @@ class ConfigFileResolver:
 
 class Settings:
     def __init__(self, section=None):
-        self.resolvers = []
-        self.resolvers.append(EnvironmentResolver())
-        self.resolvers.append(ConfigFileResolver(LOCAL_CONFIG_FILE, section))
-        self.resolvers.append(ConfigFileResolver(GLOBAL_CONFIG_FILE))
+        self.resolvers = [
+            EnvironmentResolver(),
+            ConfigFileResolver(LOCAL_CONFIG_FILE, section),
+            ConfigFileResolver(GLOBAL_CONFIG_FILE),
+        ]
 
     def __getitem__(self, item):
         for resolver in self.resolvers:

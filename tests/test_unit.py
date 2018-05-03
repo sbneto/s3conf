@@ -8,6 +8,7 @@ from click.testing import CliRunner
 from s3conf import client, exceptions
 from s3conf.s3conf import S3Conf
 from s3conf.utils import prepare_path
+from s3conf import files
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
 logging.getLogger('botocore').setLevel(logging.ERROR)
@@ -33,7 +34,7 @@ def test_generate_dict():
 
         os.environ['S3CONF'] = 'tests/test.env'
         s3 = S3Conf(storage='local')
-        data = s3.get_variables()
+        data = s3.get_envfile().as_dict()
 
         assert 'TEST' in data
         assert 'TEST2' in data
@@ -92,7 +93,7 @@ def test_no_file_defined():
     with pytest.raises(exceptions.EnvfilePathNotDefinedError):
         del os.environ['S3CONF']
         s3 = S3Conf(storage='local')
-        s3.get_variables()
+        s3.get_envfile().as_dict()
 
 
 def test_setup_environment():
@@ -113,8 +114,8 @@ def test_setup_environment():
 
         s3 = S3Conf(storage='local')
         os.environ['S3CONF'] = 'tests/test.env'
-        env_vars = s3.get_variables()
-        s3.map_files(env_vars.get('S3CONF_MAP'))
+        env_vars = s3.get_envfile().as_dict()
+        s3.downsync(env_vars.get('S3CONF_MAP'))
 
         assert os.path.isfile('tests/local/file1.txt')
         assert os.path.isfile('tests/local/subfolder/file3.txt')
@@ -126,3 +127,10 @@ def test_setup_environment():
             pass
         rmtree('tests/local', ignore_errors=True)
         rmtree('tests/remote', ignore_errors=True)
+
+
+def test_file():
+    f = files.File('tests/test_file.txt')
+    f.write('test')
+    assert f.read() == b'test'
+    os.remove('tests/test_file.txt')

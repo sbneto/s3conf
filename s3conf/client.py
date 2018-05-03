@@ -8,9 +8,7 @@ import click
 from click.exceptions import UsageError
 import click_log
 
-from . import s3conf
-from . import config
-from . import exceptions
+from . import s3conf, config, files, exceptions
 
 
 logger = logging.getLogger(__name__)
@@ -98,9 +96,9 @@ def env(section, storage, map_files, phusion, phusion_path, quiet, edit):
         if edit:
             conf.edit()
         else:
-            env_vars = conf.get_variables()
+            env_vars = conf.get_envfile().as_dict()
             if env_vars.get('S3CONF_MAP') and map_files:
-                conf.map_files(env_vars.get('S3CONF_MAP'))
+                conf.downsync(env_vars.get('S3CONF_MAP'))
             if not quiet:
                 for var_name, var_value in sorted(env_vars.items(), key=lambda x: x[0]):
                     click.echo('{}={}'.format(var_name, var_value))
@@ -165,9 +163,9 @@ def exec_command(ctx, section, command, storage, map_files):
         settings = get_settings(section)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
-        env_vars = conf.get_variables()
+        env_vars = conf.get_envfile().as_dict()
         if env_vars.get('S3CONF_MAP') and map_files:
-            conf.map_files(env_vars.get('S3CONF_MAP'))
+            conf.downsync(env_vars.get('S3CONF_MAP'))
 
         current_env = os.environ.copy()
         current_env.update(env_vars)
@@ -260,14 +258,17 @@ def downsync(storage, map_files):
         rmtree(local_root, ignore_errors=True)
 
         # running operations
+        local_path = os.path.join(local_root, os.path.basename(s3conf_env_file).lstrip('/'))
         conf = s3conf.S3Conf(storage=storage, settings=settings)
-        conf.download(s3conf_env_file, os.path.basename(s3conf_env_file), root_dir=local_root)
+        remote_env_file = conf.get_envfile()
+        local_env_file = files.EnvFile(local_path)
+        local_env_file.write(remote_env_file.read())
 
         if map_files:
-            env_vars = conf.get_variables()
+            env_vars = conf.get_envfile().as_dict()
             local_mapping_root = os.path.join(local_root, 'root')
             if env_vars.get('S3CONF_MAP'):
-                conf.map_files(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
+                conf.downsync(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
 
 
 @main.command('upsync')
@@ -300,8 +301,17 @@ def upsync(storage, map_files):
         local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
 
         # running operations
+        local_path = os.path.join(local_root, os.path.basename(s3conf_env_file).lstrip('/'))
         conf = s3conf.S3Conf(storage=storage, settings=settings)
-        conf.upload(os.path.basename(s3conf_env_file), s3conf_env_file, root_dir=local_root)
+        remote_env_file = conf.get_envfile()
+        local_env_file = files.EnvFile(local_path)
+        remote_env_file.write(local_env_file.read())
+
+        if map_files:
+            env_vars = conf.get_envfile().as_dict()
+            local_mapping_root = os.path.join(local_root, 'root')
+            if env_vars.get('S3CONF_MAP'):
+                conf.upsync(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
 
 
 if __name__ == '__main__':
