@@ -24,7 +24,7 @@ class EnvironmentResolver:
 class ConfigFileResolver:
     def __init__(self, config_file, section=None):
         self.config_file = os.path.expanduser(config_file)
-        self.section = section or 'default'
+        self.section = section or 'DEFAULT'
         self._config = None
 
     @property
