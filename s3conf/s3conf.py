@@ -8,7 +8,7 @@ import editor
 from .storages import get_storage, strip_prefix
 from .utils import prepare_path
 from .config import Settings
-from . import exceptions
+from . import exceptions, files
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -52,7 +52,7 @@ def setup_environment(storage='s3',
                       **kwargs):
     try:
         conf = S3Conf(storage=storage)
-        env_vars = conf.get_variables(**kwargs)
+        env_vars = conf.get_envfile(**kwargs).as_dict()
         for var_name, var_value in env_vars.items():
             print('{}={}'.format(var_name, var_value))
         if dump:
@@ -78,11 +78,17 @@ class S3Conf:
             raise exceptions.EnvfilePathNotDefinedError()
         return file_name
 
-    def map_files(self, files, root_dir=None):
+    def downsync(self, files, root_dir=None):
         if isinstance(files, str):
             files = unpack_list(files)
-        for file_source, file_target in files:
-            self.download(file_source, file_target, root_dir=root_dir)
+        for remote_file, local_file in files:
+            self.download(remote_file, local_file, root_dir=root_dir)
+
+    def upsync(self, files, root_dir=None):
+        if isinstance(files, str):
+            files = unpack_list(files)
+        for remote_file, local_file in files:
+            self.upload(local_file, remote_file, root_dir=root_dir)
 
     def download(self, path, path_target, root_dir=None):
         if root_dir:
@@ -112,10 +118,9 @@ class S3Conf:
         else:
             self.storage.write(open(path, 'rb'), path_target)
 
-    def get_variables(self):
+    def get_envfile(self):
         logger.info('Loading configs from {}'.format(self.environment_file_path))
-        file_data = str(self.storage.open(self.environment_file_path).read(), 'utf-8')
-        return dict(parse_dotenv(file_data))
+        return files.EnvFile(self.environment_file_path, storage=self.storage)
 
     def edit(self):
         with NamedTemporaryFile(mode='rb+', buffering=0) as f:
