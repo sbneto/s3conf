@@ -265,7 +265,7 @@ def downsync(storage, map_files):
         local_env_file.write(remote_env_file.read())
 
         if map_files:
-            env_vars = conf.get_envfile().as_dict()
+            env_vars = local_env_file.as_dict()
             local_mapping_root = os.path.join(local_root, 'root')
             if env_vars.get('S3CONF_MAP'):
                 conf.downsync(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
@@ -308,7 +308,7 @@ def upsync(storage, map_files):
         remote_env_file.write(local_env_file.read())
 
         if map_files:
-            env_vars = conf.get_envfile().as_dict()
+            env_vars = local_env_file.as_dict()
             local_mapping_root = os.path.join(local_root, 'root')
             if env_vars.get('S3CONF_MAP'):
                 conf.upsync(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
