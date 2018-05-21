@@ -58,16 +58,17 @@ class ConfigFileResolver:
 
 
 class Settings:
-    def __init__(self, section=None):
+    def __init__(self, section=None, config_file=None):
+        config_file = config_file or LOCAL_CONFIG_FILE
         if section:
             self.resolvers = [
-                ConfigFileResolver(LOCAL_CONFIG_FILE, section),
+                ConfigFileResolver(config_file, section),
                 EnvironmentResolver(),
             ]
         else:
             self.resolvers = [
                 EnvironmentResolver(),
-                ConfigFileResolver(LOCAL_CONFIG_FILE, section),
+                ConfigFileResolver(config_file, section),
             ]
 
     def __getitem__(self, item):
