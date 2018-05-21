@@ -243,8 +243,6 @@ def downsync(storage, map_files):
 
     for section in local_resolver.sections():
         settings = get_settings(section=section)
-        # removing environment resolver, we only want config file onwards on our chain
-        settings.resolvers = settings.resolvers[1:]
 
         # preparing paths
         s3conf_env_file = settings['S3CONF']
@@ -287,8 +285,6 @@ def upsync(storage, map_files):
 
     for section in local_resolver.sections():
         settings = get_settings(section=section)
-        # removing environment resolver, we only want config file onwards on our chain
-        settings.resolvers = settings.resolvers[1:]
 
         # preparing paths
         s3conf_env_file = settings['S3CONF']
