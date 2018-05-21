@@ -10,8 +10,6 @@ from .utils import prepare_path
 
 logger = logging.getLogger(__name__)
 
-
-GLOBAL_CONFIG_FILE = '~/.s3conf'
 LOCAL_CONFIG_FOLDER = './.s3conf'
 LOCAL_CONFIG_FILE = os.path.join(LOCAL_CONFIG_FOLDER, 'config')
 
@@ -61,11 +59,16 @@ class ConfigFileResolver:
 
 class Settings:
     def __init__(self, section=None):
-        self.resolvers = [
-            EnvironmentResolver(),
-            ConfigFileResolver(LOCAL_CONFIG_FILE, section),
-            ConfigFileResolver(GLOBAL_CONFIG_FILE),
-        ]
+        if section:
+            self.resolvers = [
+                ConfigFileResolver(LOCAL_CONFIG_FILE, section),
+                EnvironmentResolver(),
+            ]
+        else:
+            self.resolvers = [
+                EnvironmentResolver(),
+                ConfigFileResolver(LOCAL_CONFIG_FILE, section),
+            ]
 
     def __getitem__(self, item):
         for resolver in self.resolvers:
