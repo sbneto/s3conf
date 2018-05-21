@@ -14,14 +14,6 @@ from . import s3conf, config, files, exceptions
 logger = logging.getLogger(__name__)
 
 
-def get_settings(section=None):
-    if section:
-        section = config.Settings(section=section)
-    else:
-        section = config.Settings()
-    return section
-
-
 @click.group(invoke_without_command=True)
 @click.version_option()
 @click.option('--edit', '-e', is_flag=True)
@@ -84,7 +76,7 @@ def env(section, storage, map_files, phusion, phusion_path, quiet, edit):
     """
     try:
         logger.debug('Running env command')
-        settings = get_settings(section)
+        settings = config.Settings(section=section)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         if edit:
@@ -154,7 +146,7 @@ def exec_command(ctx, section, command, storage, map_files):
             click.echo(exec_command.get_help(ctx))
             return
 
-        settings = get_settings(section)
+        settings = config.Settings(section=section)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         env_vars = conf.get_envfile().as_dict()
@@ -242,7 +234,7 @@ def downsync(storage, map_files):
     local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
 
     for section in local_resolver.sections():
-        settings = get_settings(section=section)
+        settings = config.Settings(section=section)
 
         # preparing paths
         s3conf_env_file = settings['S3CONF']
@@ -284,7 +276,7 @@ def upsync(storage, map_files):
     local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
 
     for section in local_resolver.sections():
-        settings = get_settings(section=section)
+        settings = config.Settings(section=section)
 
         # preparing paths
         s3conf_env_file = settings['S3CONF']
