@@ -25,11 +25,10 @@ def get_settings(section=None):
 @click.group(invoke_without_command=True)
 @click.version_option()
 @click.option('--edit', '-e', is_flag=True)
-@click.option('--global', 'global_settings', is_flag=True)
 @click.pass_context
 # this sets the log level for this app only
 @click_log.simple_verbosity_option('s3conf')
-def main(ctx, edit, global_settings):
+def main(ctx, edit):
     """
     Simple command line tool to help manage environment variables stored in a S3-like system. Facilitates editing text
     files remotely stored, as well as downloading and uploading files.
@@ -41,13 +40,8 @@ def main(ctx, edit, global_settings):
     logger.debug('Running main entrypoint')
     if edit:
         if ctx.invoked_subcommand is None:
-            if global_settings:
-                logger.debug('Using config file %s', config.GLOBAL_CONFIG_FILE)
-                config.ConfigFileResolver(config.GLOBAL_CONFIG_FILE).edit()
-            else:
-                logger.debug('Using config file %s', config.LOCAL_CONFIG_FILE)
-                config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).edit()
-            return
+            logger.debug('Using config file %s', config.LOCAL_CONFIG_FILE)
+            config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).edit()
         else:
             raise UsageError('Edit should not be called with a subcommand.')
     # manually call help in case no relevant settings were defined
