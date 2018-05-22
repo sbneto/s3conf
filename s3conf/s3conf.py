@@ -122,12 +122,5 @@ class S3Conf:
         logger.info('Loading configs from {}'.format(self.environment_file_path))
         return files.EnvFile(self.environment_file_path, storage=self.storage)
 
-    def edit(self):
-        with NamedTemporaryFile(mode='rb+', buffering=0) as f:
-            original_data = self.storage.open(self.environment_file_path).read()
-            f.write(original_data)
-            edited_data = editor.edit(filename=f.name)
-            if edited_data != original_data:
-                self.upload(f.name, self.environment_file_path)
-            else:
-                logger.warning('File not changed. Nothing to upload.')
+    def edit(self, create=False):
+        files.EnvFile(self.environment_file_path, storage=self.storage).edit(create=create)
