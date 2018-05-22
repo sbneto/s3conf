@@ -113,8 +113,11 @@ class LocalStorage(BaseStorage):
                 for file in files:
                     yield strip_prefix(os.path.join(root, file), path)
         else:
-            # the relative path of a file to itself is empty
-            yield ''
+            # only yields if it exists
+            if os.path.exists(path):
+                # the relative path of a file to itself is empty
+                # same behavior as in boto3
+                yield ''
 
 
 STORAGES = {

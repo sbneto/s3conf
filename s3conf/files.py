@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 
 import editor
 
-from .storages import LocalStorage
+from .exceptions import FileDoesNotExist
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -14,20 +14,38 @@ __escape_decoder = codecs.getdecoder('unicode_escape')
 class File:
     def __init__(self, name, storage=None):
         self.name = name
-        self.storage = storage or LocalStorage()
+        self._storage = storage
         self._stream = None
+
+    @property
+    def storage(self):
+        if not self._storage:
+            from .storages import LocalStorage
+            self._storage = LocalStorage()
+        return self._storage
 
     def read(self):
         return self.storage.open(self.name).read()
+
+    def exists(self):
+        if list(self.storage.list(self.name)):
+            return True
+        return False
 
     def write(self, data):
         if isinstance(data, str):
             data = data.encode('utf-8')
         self.storage.write(io.BytesIO(data), self.name)
 
-    def edit(self):
+    def edit(self, create=False):
         with NamedTemporaryFile(mode='rb+', buffering=0) as f:
-            original_data = self.read()
+            original_data = b''
+            if not self.exists():
+                if not create:
+                    logger.error('Can not edit file %s. It does not exits', self.name)
+                    raise FileDoesNotExist(self.name)
+            else:
+                original_data = self.read()
             f.write(original_data)
             edited_data = editor.edit(filename=f.name)
             if edited_data != original_data:

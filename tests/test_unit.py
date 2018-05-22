@@ -8,20 +8,20 @@ from click.testing import CliRunner
 from s3conf import client, exceptions
 from s3conf.s3conf import S3Conf
 from s3conf.utils import prepare_path
-from s3conf import files
+from s3conf import files, config
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
 logging.getLogger('botocore').setLevel(logging.ERROR)
 logging.getLogger('s3transfer').setLevel(logging.ERROR)
 
 
-def test_cli():
+def _test_cli():
     os.environ['LC_ALL'] = 'C.UTF-8'
     os.environ['LANG'] = 'C.UTF-8'
     runner = CliRunner()
-    # result = runner.invoke(client.main, ['env', '--help'])
-    # result = runner.invoke(client.main, ['clone'])
-    # result = runner.invoke(client.main, ['push'])
+    runner.invoke(client.main, ['env', 'dev', '-e'],
+                  catch_exceptions=False,
+                  standalone_mode=False)
 
 
 def test_prepare_empty_path():
@@ -130,7 +130,54 @@ def test_setup_environment():
 
 
 def test_file():
-    f = files.File('tests/test_file.txt')
-    f.write('test')
-    assert f.read() == b'test'
-    os.remove('tests/test_file.txt')
+    try:
+        f = files.File('tests/test_file.txt')
+        f.write('test')
+        assert f.read() == b'test'
+    finally:
+        try:
+            os.remove('tests/test_file.txt')
+        except FileNotFoundError:
+            pass
+
+
+def test_section_defined_in_settings():
+    try:
+        open('tests/config', 'w').write("""
+        [test]
+            TEST=123
+            TEST2=456
+        """)
+        os.environ['TEST'] = '321'
+        os.environ['TEST2'] = '654'
+        os.environ['TEST3'] = '987'
+        settings = config.Settings(section='test', config_file='tests/config')
+        assert settings['TEST'] == '123'
+        assert settings['TEST2'] == '456'
+        assert settings['TEST3'] == '987'
+    finally:
+        try:
+            os.remove('tests/config')
+        except FileNotFoundError:
+            pass
+
+
+def test_section_not_defined_in_settings():
+    try:
+        open('tests/config', 'w').write("""
+        [test]
+            TEST=123
+            TEST2=456
+        """)
+        os.environ['TEST'] = '321'
+        os.environ['TEST2'] = '654'
+        os.environ['TEST3'] = '987'
+        settings = config.Settings(config_file='tests/config')
+        assert settings['TEST'] == '321'
+        assert settings['TEST2'] == '654'
+        assert settings['TEST3'] == '987'
+    finally:
+        try:
+            os.remove('tests/config')
+        except FileNotFoundError:
+            pass

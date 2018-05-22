@@ -14,22 +14,17 @@ from . import s3conf, config, files, exceptions
 logger = logging.getLogger(__name__)
 
 
-def get_settings(section=None):
-    if section:
-        section = config.Settings(section=section)
-    else:
-        section = config.Settings()
-    return section
-
-
 @click.group(invoke_without_command=True)
 @click.version_option()
 @click.option('--edit', '-e', is_flag=True)
-@click.option('--global', 'global_settings', is_flag=True)
+@click.option('--create',
+              '-c',
+              is_flag=True,
+              help='When trying to edit a file, create it if it does not exist.')
 @click.pass_context
 # this sets the log level for this app only
 @click_log.simple_verbosity_option('s3conf')
-def main(ctx, edit, global_settings):
+def main(ctx, edit, create):
     """
     Simple command line tool to help manage environment variables stored in a S3-like system. Facilitates editing text
     files remotely stored, as well as downloading and uploading files.
@@ -37,22 +32,21 @@ def main(ctx, edit, global_settings):
     # configs this module logger to behave properly
     # logger messages will go to stderr (check __init__.py/patch.py)
     # client output should be generated with click.echo() to go to stdout
-    click_log.basic_config('s3conf')
-    logger.debug('Running main entrypoint')
-    if edit:
-        if ctx.invoked_subcommand is None:
-            if global_settings:
-                logger.debug('Using config file %s', config.GLOBAL_CONFIG_FILE)
-                config.ConfigFileResolver(config.GLOBAL_CONFIG_FILE).edit()
-            else:
+    try:
+        click_log.basic_config('s3conf')
+        logger.debug('Running main entrypoint')
+        if edit:
+            if ctx.invoked_subcommand is None:
                 logger.debug('Using config file %s', config.LOCAL_CONFIG_FILE)
-                config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).edit()
-            return
-        else:
-            raise UsageError('Edit should not be called with a subcommand.')
-    # manually call help in case no relevant settings were defined
-    if ctx.invoked_subcommand is None:
-        click.echo(main.get_help(ctx))
+                config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).edit(create=create)
+                return
+            else:
+                raise UsageError('Edit should not be called with a subcommand.')
+        # manually call help in case no relevant settings were defined
+        if ctx.invoked_subcommand is None:
+            click.echo(main.get_help(ctx))
+    except exceptions.FileDoesNotExist as e:
+        raise UsageError('The file {} does not exist. Try "-c" option if you want to create it.'.format(str(e)))
 
 
 @main.command('env')
@@ -83,18 +77,22 @@ def main(ctx, edit, global_settings):
 @click.option('--edit',
               '-e',
               is_flag=True)
-def env(section, storage, map_files, phusion, phusion_path, quiet, edit):
+@click.option('--create',
+              '-c',
+              is_flag=True,
+              help='When trying to edit a file, create it if it does not exist.')
+def env(section, storage, map_files, phusion, phusion_path, quiet, edit, create):
     """
     Reads the file defined by the S3CONF variable and output its contents to stdout. Logs are printed to stderr.
     See options for added functionality: editing file, mapping files, dumping in the phusion-baseimage format, etc.
     """
     try:
         logger.debug('Running env command')
-        settings = get_settings(section)
+        settings = config.Settings(section=section)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         if edit:
-            conf.edit()
+            conf.edit(create=create)
         else:
             env_vars = conf.get_envfile().as_dict()
             if env_vars.get('S3CONF_MAP') and map_files:
@@ -115,6 +113,8 @@ def env(section, storage, map_files, phusion, phusion_path, quiet, edit):
         if sections_detected:
             sections_detected = '\n\nThe following sections were detected:\n\n' + sections_detected
         raise UsageError(error_msg + sections_detected)
+    except exceptions.FileDoesNotExist as e:
+        raise UsageError('The file {} does not exist. Try "-c" option if you want to create it.'.format(str(e)))
 
 
 @main.command('exec')
@@ -160,7 +160,7 @@ def exec_command(ctx, section, command, storage, map_files):
             click.echo(exec_command.get_help(ctx))
             return
 
-        settings = get_settings(section)
+        settings = config.Settings(section=section)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         env_vars = conf.get_envfile().as_dict()
@@ -248,9 +248,7 @@ def downsync(storage, map_files):
     local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
 
     for section in local_resolver.sections():
-        settings = get_settings(section=section)
-        # removing environment resolver, we only want config file onwards on our chain
-        settings.resolvers = settings.resolvers[1:]
+        settings = config.Settings(section=section)
 
         # preparing paths
         s3conf_env_file = settings['S3CONF']
@@ -292,9 +290,7 @@ def upsync(storage, map_files):
     local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
 
     for section in local_resolver.sections():
-        settings = get_settings(section=section)
-        # removing environment resolver, we only want config file onwards on our chain
-        settings.resolvers = settings.resolvers[1:]
+        settings = config.Settings(section=section)
 
         # preparing paths
         s3conf_env_file = settings['S3CONF']
