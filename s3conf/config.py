@@ -6,6 +6,7 @@ from configparser import ConfigParser
 import editor
 
 from .utils import prepare_path
+from .files import File
 
 
 logger = logging.getLogger(__name__)
@@ -39,19 +40,8 @@ class ConfigFileResolver:
     def get(self, item, default=None, section=None):
         return self.config.get(section or self.section, item, fallback=default)
 
-    def edit(self):
-        if os.path.isfile(self.config_file):
-            editor.edit(filename=self.config_file)
-        else:
-            with NamedTemporaryFile(mode='rb+', buffering=0) as f:
-                data = editor.edit(filename=f.name)
-
-            if data:
-                prepare_path(self.config_file)
-                with open(self.config_file, 'wb') as f:
-                    f.write(data)
-            else:
-                logger.warning('Nothing to write. Config file not created.')
+    def edit(self, create=False):
+        File(self.config_file).edit(create=create)
 
     def sections(self):
         return self.config.sections()
