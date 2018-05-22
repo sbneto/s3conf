@@ -19,9 +19,9 @@ def _test_cli():
     os.environ['LC_ALL'] = 'C.UTF-8'
     os.environ['LANG'] = 'C.UTF-8'
     runner = CliRunner()
-    # result = runner.invoke(client.main, ['env', '--help'])
-    # result = runner.invoke(client.main, ['clone'])
-    # result = runner.invoke(client.main, ['push'])
+    runner.invoke(client.main, ['env', 'dev', '-e'],
+                  catch_exceptions=False,
+                  standalone_mode=False)
 
 
 def test_prepare_empty_path():
