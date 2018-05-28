@@ -72,9 +72,13 @@ class S3Storage(BaseStorage):
             else:
                 raise
 
-    def _write_file(self, f, bucket, path_target):
+    def _write_file(self, f, bucket_name, path_target):
         s3 = self.get_resource()
-        bucket = s3.create_bucket(Bucket=bucket)
+        try:
+            bucket = s3.create_bucket(Bucket=bucket_name)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'BucketAlreadyExists':
+                bucket = s3.Bucket(bucket_name)
         bucket.upload_fileobj(f, path_target)
 
     # this is not good, it should return a file like and not mix
