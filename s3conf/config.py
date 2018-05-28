@@ -1,11 +1,7 @@
 import os
 import logging
-from tempfile import NamedTemporaryFile
 from configparser import ConfigParser
 
-import editor
-
-from .utils import prepare_path
 from .files import File
 
 
