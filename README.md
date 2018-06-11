@@ -12,7 +12,7 @@ pip install s3conf
 
 # Usage
 
-## Configuration
+## Quick Start
 
 This package provides a command line client `s3conf` that helps us to manipulate enviroment variables.
 It looks for a configuration variable named `S3CONF` that should point to a file in a S3-like bucket. Eg.:
@@ -23,17 +23,10 @@ export S3CONF=s3://mybucket/myfile.env
 
 If you have a `aws-cli` working, this should already be enough to get you started.
 
-## Credentials Resolution
+## Environemnt Configuration
 
-In order to find the `S3CONF` variable and other credentials variables, it uses a credentials resolution 
-that flows like this:
-
-1) Environment Variables
-2) Configuration File in the current folder: `./.s3conf/config`
-3) Configuration File in the user folder: `~/.s3conf`
-4) Boto3 configuration resolution
-
-The client will search for these authentication variables, if they are provided:
+In addition to the `S3CONF` environment variable, the client will also search for these 
+authentication variables if they are provided:
 
 ```bash
 S3CONF_ACCESS_KEY_ID=***access_key***
@@ -42,18 +35,27 @@ S3CONF_S3_REGION_NAME=***region_name***
 S3CONF_S3_ENDPOINT_URL=***endpoint_url***
 ```
 
-These variables map to their `AWS_` counterpart that are used for regular Boto3 configuration.
-The cliendt also searchs for the regular `AWS_` variables, but the client variables take precedence. 
-They are particularly useful when using non-aws blob storage services compatible with S3, such as DigitalOcean Spaces,
-without messing your AWS credentials.
+These variables map to their `AWS_` counterpart used for regular Boto3 configuration.
+The client also searchs for the regular `AWS_` variables, but their `S3CONF_*` version take precedence. 
+They are particularly useful when using non-aws blob storage services that are compatible with S3, 
+such as DigitalOcean Spaces, without messing your AWS credentials.
 
-Each variable lookup will follow the resolution order and the client will use the first one it finds, 
-meaning you can keep the `S3CONF` variable defined in you working directory and your credentials 
-in your user folder, for example.
+## Configuration Files
 
-You can create multiple sections in your current folder Configuration File:
+The client can use a configuration file `.s3conf/config` that can be located in any folder along the
+current folder path. E.g.: `/usr/sbneto/.s3conf/config` will be used when inside the folder 
+`/usr/sbneto/data`.
+
+This file is an INI file as described in Pyhton's [ConfigParser](https://docs.python.org/3/library/configparser.html).
+You can define multiple sections in your configuration file, as well as a `DEFAULT` one:
 
 ```ini
+[DEFAULT]
+S3CONF_ACCESS_KEY_ID=***access_key***
+S3CONF_SECRET_ACCESS_KEY=***secret_access_key***
+S3CONF_S3_REGION_NAME=***region_name***
+S3CONF_S3_ENDPOINT_URL=***endpoint_url***
+
 [dev]
 S3CONF=s3://my-dev-bucket/myfile.env
 
@@ -61,7 +63,8 @@ S3CONF=s3://my-dev-bucket/myfile.env
 S3CONF=s3://my-prod-bucket/myfile.env
 ```
 
-And inform the client to use the rigth section:
+When a section is provided to the client, the values in the config file take precedence 
+over the environemnt variables:
 
 ```bash
 s3conf env dev
@@ -69,17 +72,18 @@ s3conf env dev
 
 ## Editing Your Config Files
 
-A convenient way to edit the Configuration File in your current folder is to use the following command:
+A convenient way to edit the Configuration File is to use the following command:
 
 ```bash
 s3conf -e
 ```
 
-This will open your default file editor, much like as how `crontab -e` works. To edit the Configuration File 
-in your user's folder, you can use the following command:
+This will open your default file editor, much like as how `crontab -e` works. If no configuration folder
+is found in the current directory path, you can use the `-c` flag to create it in the current folder
+`./.s3conf/config`:
 
 ```bash
-s3conf -e --global
+s3conf -ec
 ```
 
 ## Setting the Environment
@@ -119,6 +123,20 @@ s3conf env -e
 
 This will download the environment file to a temporary file, open your default file editor (much like as 
 `crontab -e` works) and upload the file back to the blob storage service only if edits were made.
+
+## Setting/Unsetting a singe Environment Variable
+
+You can set a single environemnt variable for a environment file pointed in a section in the following way:
+
+```bash
+s3conf set dev ENV_VAR_1=some_data_1
+```
+
+You can remove this environment variable from your file in a similar way:
+
+```bash
+s3conf unset dev ENV_VAR_1
+```
 
 ## Mapping Files
 
