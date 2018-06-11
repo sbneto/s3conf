@@ -199,17 +199,33 @@ def test_non_existing_lookup_config_folder():
     assert config_folder == os.path.join('.', '.s3conf')
 
 
-def _test_set_env_var():
+def test_set_unset_env_var():
     try:
-        os.environ['LC_ALL'] = 'C.UTF-8'
-        os.environ['LANG'] = 'C.UTF-8'
+        prepare_path('tests/.s3conf/')
+        open('tests/.s3conf/config', 'w').write("""
+                [test]
+                    AWS_S3_ENDPOINT_URL=http://localhost:4572
+                    AWS_ACCESS_KEY_ID=key
+                    AWS_SECRET_ACCESS_KEY=secret
+                    AWS_S3_REGION_NAME=region
+                    S3CONF=s3://s3conf/test.env
+                """)
+        settings = config.Settings(section='test', config_file='tests/.s3conf/config')
+        s3 = S3Conf(settings=settings)
 
-        runner = CliRunner()
-        runner.invoke(client.main, ['env', 'dev', '-e'],
-                      catch_exceptions=False,
-                      standalone_mode=False)
+        env_file = s3.get_envfile()
+        env_file.set('TEST=123', create=True)
+
+        env_vars = s3.get_envfile().as_dict()
+        assert env_vars['TEST'] == '123'
+
+        env_file = s3.get_envfile()
+        env_file.unset('TEST')
+
+        env_vars = s3.get_envfile().as_dict()
+        assert 'TEST' not in env_vars
     finally:
         try:
-            os.remove('tests/config')
+            rmtree('tests/.s3conf')
         except FileNotFoundError:
             pass
