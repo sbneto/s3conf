@@ -15,15 +15,6 @@ logging.getLogger('botocore').setLevel(logging.ERROR)
 logging.getLogger('s3transfer').setLevel(logging.ERROR)
 
 
-def _test_cli():
-    os.environ['LC_ALL'] = 'C.UTF-8'
-    os.environ['LANG'] = 'C.UTF-8'
-    runner = CliRunner()
-    runner.invoke(client.main, ['env', 'dev', '-e'],
-                  catch_exceptions=False,
-                  standalone_mode=False)
-
-
 def test_prepare_empty_path():
     prepare_path('')
 
@@ -176,6 +167,47 @@ def test_section_not_defined_in_settings():
         assert settings['TEST'] == '321'
         assert settings['TEST2'] == '654'
         assert settings['TEST3'] == '987'
+    finally:
+        try:
+            os.remove('tests/config')
+        except FileNotFoundError:
+            pass
+
+
+def test_existing_lookup_config_folder():
+    try:
+        prepare_path('tests/path1/path2/path3/')
+        prepare_path('tests/path1/.s3conf/')
+        open('tests/path1/.s3conf/config', 'w').write("""
+                [test]
+                    TEST=123
+                    TEST2=456
+                """)
+        config_folder = config._lookup_config_folder('tests/path1/path2/path3')
+        base_path = os.path.abspath('tests/path1')
+        assert config_folder == os.path.join(base_path, '.s3conf')
+    finally:
+        try:
+            rmtree('tests/path1')
+        except FileNotFoundError:
+            pass
+
+
+def test_non_existing_lookup_config_folder():
+    parent_path = os.path.dirname(os.path.abspath('.'))
+    config_folder = config._lookup_config_folder(parent_path)
+    assert config_folder == os.path.join('.', '.s3conf')
+
+
+def _test_set_env_var():
+    try:
+        os.environ['LC_ALL'] = 'C.UTF-8'
+        os.environ['LANG'] = 'C.UTF-8'
+
+        runner = CliRunner()
+        runner.invoke(client.main, ['env', 'dev', '-e'],
+                      catch_exceptions=False,
+                      standalone_mode=False)
     finally:
         try:
             os.remove('tests/config')
