@@ -103,16 +103,7 @@ def env(section, storage, map_files, phusion, phusion_path, quiet, edit, create)
             if phusion:
                 s3conf.phusion_dump(env_vars, phusion_path)
     except exceptions.EnvfilePathNotDefinedError:
-        error_msg = 'Set the environemnt variable S3CONF or provide a section from an existing config file.'
-        try:
-            sections_detected = ''
-            for section in config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).sections():
-                sections_detected += '    {}\n'.format(section)
-        except FileNotFoundError:
-            pass
-        if sections_detected:
-            sections_detected = '\n\nThe following sections were detected:\n\n' + sections_detected
-        raise UsageError(error_msg + sections_detected)
+        raise exceptions.EnvfilePathNotDefinedUsageError()
     except exceptions.FileDoesNotExist as e:
         raise UsageError('The file {} does not exist. Try "-c" option if you want to create it.'.format(str(e)))
 
@@ -172,16 +163,7 @@ def exec_command(ctx, section, command, storage, map_files):
         logger.debug('Executing command "%s"', command)
         subprocess.run(shlex.split(command), env=current_env, check=True)
     except exceptions.EnvfilePathNotDefinedError:
-        error_msg = 'Set the environemnt variable S3CONF or provide a section from an existing config file.'
-        try:
-            sections_detected = ''
-            for section in existing_sections:
-                sections_detected += '    {}\n'.format(section)
-        except FileNotFoundError:
-            pass
-        if sections_detected:
-            sections_detected = '\n\nThe following sections were detected:\n\n' + sections_detected
-        raise UsageError(error_msg + sections_detected)
+        raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
 @main.command('download')
@@ -308,6 +290,61 @@ def upsync(storage, map_files):
             local_mapping_root = os.path.join(local_root, 'root')
             if env_vars.get('S3CONF_MAP'):
                 conf.upsync(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
+
+
+@main.command('set')
+@click.argument('section')
+@click.argument('value',
+                required=False)
+@click.option('--create',
+              '-c',
+              is_flag=True,
+              help='When trying to set a variable, create the file if it does not exist.')
+def set(section, value, create):
+    """
+    Set value of a variable in an environment file for the given section.
+    If the variable is already defined, its value is replaced, otherwise, it is added to the end of the file.
+    The value is given as "ENV_VAR_NAME=env_var_value", e.g.:
+
+    s3conf set test ENV_VAR_NAME=env_var_value
+    """
+    if not value:
+        value = section
+        section = None
+    try:
+        logger.debug('Running env command')
+        settings = config.Settings(section=section)
+        conf = s3conf.S3Conf(settings=settings)
+
+        env_vars = conf.get_envfile()
+        env_vars.set(value, create=create)
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
+
+
+@main.command('unset')
+@click.argument('section')
+@click.argument('value',
+                required=False)
+def unset(section, value):
+    """
+    Unset a variable in an environment file for the given section.
+    The value is given is the variable name, e.g.:
+
+    s3conf unset test ENV_VAR_NAME
+    """
+    if not value:
+        value = section
+        section = None
+    try:
+        logger.debug('Running env command')
+        settings = config.Settings(section=section)
+        conf = s3conf.S3Conf(settings=settings)
+
+        env_vars = conf.get_envfile()
+        env_vars.unset(value)
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
 if __name__ == '__main__':

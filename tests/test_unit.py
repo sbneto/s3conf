@@ -15,15 +15,6 @@ logging.getLogger('botocore').setLevel(logging.ERROR)
 logging.getLogger('s3transfer').setLevel(logging.ERROR)
 
 
-def _test_cli():
-    os.environ['LC_ALL'] = 'C.UTF-8'
-    os.environ['LANG'] = 'C.UTF-8'
-    runner = CliRunner()
-    runner.invoke(client.main, ['env', 'dev', '-e'],
-                  catch_exceptions=False,
-                  standalone_mode=False)
-
-
 def test_prepare_empty_path():
     prepare_path('')
 
@@ -179,5 +170,62 @@ def test_section_not_defined_in_settings():
     finally:
         try:
             os.remove('tests/config')
+        except FileNotFoundError:
+            pass
+
+
+def test_existing_lookup_config_folder():
+    try:
+        prepare_path('tests/path1/path2/path3/')
+        prepare_path('tests/path1/.s3conf/')
+        open('tests/path1/.s3conf/config', 'w').write("""
+                [test]
+                    TEST=123
+                    TEST2=456
+                """)
+        config_folder = config._lookup_config_folder('tests/path1/path2/path3')
+        base_path = os.path.abspath('tests/path1')
+        assert config_folder == os.path.join(base_path, '.s3conf')
+    finally:
+        try:
+            rmtree('tests/path1')
+        except FileNotFoundError:
+            pass
+
+
+def test_non_existing_lookup_config_folder():
+    parent_path = os.path.dirname(os.path.abspath('.'))
+    config_folder = config._lookup_config_folder(parent_path)
+    assert config_folder == os.path.join('.', '.s3conf')
+
+
+def test_set_unset_env_var():
+    try:
+        prepare_path('tests/.s3conf/')
+        open('tests/.s3conf/config', 'w').write("""
+                [test]
+                    AWS_S3_ENDPOINT_URL=http://localhost:4572
+                    AWS_ACCESS_KEY_ID=key
+                    AWS_SECRET_ACCESS_KEY=secret
+                    AWS_S3_REGION_NAME=region
+                    S3CONF=s3://s3conf/test.env
+                """)
+        settings = config.Settings(section='test', config_file='tests/.s3conf/config')
+        s3 = S3Conf(settings=settings)
+
+        env_file = s3.get_envfile()
+        env_file.set('TEST=123', create=True)
+
+        env_vars = s3.get_envfile().as_dict()
+        assert env_vars['TEST'] == '123'
+
+        env_file = s3.get_envfile()
+        env_file.unset('TEST')
+
+        env_vars = s3.get_envfile().as_dict()
+        assert 'TEST' not in env_vars
+    finally:
+        try:
+            rmtree('tests/.s3conf')
         except FileNotFoundError:
             pass

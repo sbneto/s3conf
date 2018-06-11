@@ -1,10 +1,12 @@
 import os
 import logging
 import boto3
+from botocore.exceptions import ClientError
 from io import BytesIO
 
 from .utils import prepare_path
 from .config import Settings
+from . import exceptions
 
 
 logger = logging.getLogger(__name__)
@@ -55,16 +57,29 @@ class S3Storage(BaseStorage):
             )
         return self._resource
 
-    def _read_file_into_stream(self, bucket, file_name, stream=None):
-        s3 = self.get_resource()
-        stream = stream or BytesIO()
-        s3.Object(bucket, file_name).download_fileobj(stream)
-        stream.seek(0)
-        return stream
+    def _read_file_into_stream(self, bucket_name, file_name, stream=None):
+        try:
+            stream = stream or BytesIO()
+            s3 = self.get_resource()
+            bucket = s3.Bucket(bucket_name)
+            bucket.download_fileobj(file_name, stream)
+            stream.seek(0)
+            return stream
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                logger.debug('File %s in bucket %s does not exist', file_name, bucket)
+                raise exceptions.FileDoesNotExist('s3://{}/{}'.format(bucket_name, file_name))
+            else:
+                raise
 
-    def _write_file(self, f, bucket, path_target):
+    def _write_file(self, f, bucket_name, path_target):
         s3 = self.get_resource()
-        s3.Object(bucket, path_target).upload_fileobj(f)
+        try:
+            bucket = s3.create_bucket(Bucket=bucket_name)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'BucketAlreadyExists':
+                bucket = s3.Bucket(bucket_name)
+        bucket.upload_fileobj(f, path_target)
 
     # this is not good, it should return a file like and not mix
     # a "read-into" functionality with the "open" behavior
@@ -83,9 +98,15 @@ class S3Storage(BaseStorage):
         logger.debug('Listing %s', path)
         bucket_name, path = strip_s3_path(path)
         bucket = self.get_resource().Bucket(bucket_name)
-        for obj in bucket.objects.filter(Prefix=path):
-            if not obj.key.endswith('/'):
-                yield strip_prefix(obj.key, path)
+        try:
+            for obj in bucket.objects.filter(Prefix=path):
+                if not obj.key.endswith('/'):
+                    yield strip_prefix(obj.key, path)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchBucket':
+                logger.warning('Bucket does not exist, list() returning empty.')
+            else:
+                raise
 
 
 class LocalStorage(BaseStorage):
@@ -94,12 +115,15 @@ class LocalStorage(BaseStorage):
             raise ValueError('LocalStorage can not process S3 paths.')
 
     def open(self, file_name, stream=None):
-        self._validate_path(file_name)
-        stream = stream or BytesIO()
-        with open(file_name, 'rb') as f:
-            stream.write(f.read())
-        stream.seek(0)
-        return stream
+        try:
+            self._validate_path(file_name)
+            stream = stream or BytesIO()
+            with open(file_name, 'rb') as f:
+                stream.write(f.read())
+            stream.seek(0)
+            return stream
+        except FileNotFoundError:
+            raise exceptions.FileDoesNotExist(file_name)
 
     def write(self, f, file_name):
         self._validate_path(file_name)
