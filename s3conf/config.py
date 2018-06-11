@@ -7,7 +7,20 @@ from .files import File
 
 logger = logging.getLogger(__name__)
 
-LOCAL_CONFIG_FOLDER = './.s3conf'
+
+def _lookup_config_folder(initial_folder='.'):
+    if not initial_folder:
+        return os.path.join('.', '.s3conf')
+    current_path = os.path.abspath(initial_folder)
+    path_items = set(os.listdir(current_path))
+    if '.s3conf' in path_items:
+        s3conf_folder = os.path.join(current_path, '.s3conf')
+        if os.path.isdir(s3conf_folder):
+            return os.path.join(current_path, '.s3conf')
+    return _lookup_config_folder(os.path.dirname(current_path) if current_path != '/' else None)
+
+
+LOCAL_CONFIG_FOLDER = _lookup_config_folder()
 LOCAL_CONFIG_FILE = os.path.join(LOCAL_CONFIG_FOLDER, 'config')
 
 
