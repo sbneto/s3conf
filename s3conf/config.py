@@ -10,13 +10,17 @@ logger = logging.getLogger(__name__)
 
 def _lookup_config_folder(initial_folder='.'):
     if not initial_folder:
-        return os.path.join('.', '.s3conf')
+        config_folder = os.path.join('.', '.s3conf')
+        logger.debug('Config folder detected: %s', config_folder)
+        return config_folder
     current_path = os.path.abspath(initial_folder)
     path_items = set(os.listdir(current_path))
     if '.s3conf' in path_items:
         s3conf_folder = os.path.join(current_path, '.s3conf')
         if os.path.isdir(s3conf_folder):
-            return os.path.join(current_path, '.s3conf')
+            config_folder = os.path.join(current_path, '.s3conf')
+            logger.debug('Config folder detected: %s', config_folder)
+            return config_folder
     return _lookup_config_folder(os.path.dirname(current_path) if current_path != '/' else None)
 
 
