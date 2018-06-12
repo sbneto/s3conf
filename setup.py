@@ -87,6 +87,6 @@ setup(
     ],
     entry_points='''
     [console_scripts]
-    s3conf=s3conf.client:main
+    s3conf=s3conf.__main__:main
     ''',
 )
