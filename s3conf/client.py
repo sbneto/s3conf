@@ -345,7 +345,3 @@ def unset(section, value):
         env_vars.unset(value)
     except exceptions.EnvfilePathNotDefinedError:
         raise exceptions.EnvfilePathNotDefinedUsageError()
-
-
-if __name__ == '__main__':
-    main()
