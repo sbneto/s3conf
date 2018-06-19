@@ -8,14 +8,14 @@ import click
 from click.exceptions import UsageError
 import click_log
 
-from . import s3conf, config, files, exceptions
+from . import s3conf, config, files, exceptions, __version__
 
 
 logger = logging.getLogger(__name__)
 
 
 @click.group(invoke_without_command=True)
-@click.version_option()
+@click.version_option(version=__version__)
 @click.option('--edit', '-e', is_flag=True)
 @click.option('--create',
               '-c',
