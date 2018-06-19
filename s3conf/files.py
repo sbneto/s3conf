@@ -65,11 +65,11 @@ class File:
                     raise
             f.write(original_data)
             edited_data = editor.edit(filename=f.name)
-            if edited_data != original_data:
-                f.seek(0)
-                self.storage.write(f, self.name)
-            else:
-                logger.warning('File not changed. Nothing to write.')
+
+        if edited_data != original_data:
+            self.storage.write(io.BytesIO(edited_data), self.name)
+        else:
+            logger.warning('File not changed. Nothing to write.')
 
 
 class EnvFile(File):
