@@ -1,4 +1,6 @@
-boto3==1.7.28
-click==6.7
-python-editor==1.0.3
-click-log==0.2.1
+boto3~=1.7.28
+click~=6.7
+python-editor~=1.0.3
+click-log~=0.2.1
+pytest~=3.6.3
+pytest-pythonpath
