@@ -49,7 +49,7 @@ def test_upload_download_files():
         settings = config.Settings(section='test', config_file=config_file)
         s3 = S3Conf(settings=settings)
 
-        s3.upload(os.path.join(temp_dir, 'tests/local/'), 'tests/remote/')
+        s3.upload(os.path.join(temp_dir, 'tests/local/'), 's3://tests/remote/')
         s3.download('s3://tests/remote/', os.path.join(temp_dir, 'tests/remote/'))
 
         assert open(os.path.join(temp_dir, 'tests/remote/file1.txt')).read() == 'file1'
