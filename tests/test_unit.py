@@ -8,7 +8,7 @@ import pytest
 from s3conf import exceptions
 from s3conf.s3conf import S3Conf
 from s3conf.utils import prepare_path
-from s3conf import files, config
+from s3conf import files, config, storages
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
 logging.getLogger('botocore').setLevel(logging.ERROR)
@@ -19,122 +19,105 @@ def test_prepare_empty_path():
     prepare_path('')
 
 
-def test_generate_dict():
-    try:
-        open('tests/test.env', 'w').write('TEST=123\nTEST2=456\n')
-
-        os.environ['S3CONF'] = 'tests/test.env'
-        s3 = S3Conf(storage='local')
-        data = s3.get_envfile().as_dict()
-
-        assert 'TEST' in data
-        assert 'TEST2' in data
-        assert data['TEST'] == '123'
-        assert data['TEST2'] == '456'
-    finally:
-        try:
-            os.remove('tests/test.env')
-        except FileNotFoundError:
-            pass
+def test_file():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        test_file = os.path.join(temp_dir, 'test_file.txt')
+        f = files.File(test_file)
+        f.write('test')
+        assert f.read() == b'test'
 
 
-def test_upload_files():
-    try:
-        prepare_path('tests/local/subfolder/')
-        prepare_path('tests/remote/')
-        open('tests/local/file1.txt', 'w').write('file1')
-        open('tests/local/file2.txt', 'w').write('file2')
-        open('tests/local/subfolder/file3.txt', 'w').write('file3')
-        open('tests/local/subfolder/file4.txt', 'w').write('file4')
+def test_upload_download_files():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file = os.path.join(temp_dir, '.s3conf/config')
+        prepare_path(config_file)
+        open(config_file, 'w').write("""
+        [test]
+            AWS_S3_ENDPOINT_URL=http://localhost:4572
+            AWS_ACCESS_KEY_ID=key
+            AWS_SECRET_ACCESS_KEY=secret
+            AWS_S3_REGION_NAME=region
+            S3CONF=s3://s3conf/test.env
+        """)
 
-        s3 = S3Conf(storage='local')
-        s3.upload('tests/local/', 'tests/remote/')
+        prepare_path(os.path.join(temp_dir, 'tests/local/subfolder/'))
+        open(os.path.join(temp_dir, 'tests/local/file1.txt'), 'w').write('file1')
+        open(os.path.join(temp_dir, 'tests/local/file2.txt'), 'w').write('file2')
+        open(os.path.join(temp_dir, 'tests/local/subfolder/file3.txt'), 'w').write('file3')
+        open(os.path.join(temp_dir, 'tests/local/subfolder/file4.txt'), 'w').write('file4')
 
-        assert os.path.isfile('tests/remote/file1.txt')
-        assert os.path.isfile('tests/remote/file2.txt')
-        assert os.path.isfile('tests/remote/subfolder/file3.txt')
-        assert os.path.isfile('tests/remote/subfolder/file4.txt')
-    finally:
-        rmtree('tests/local', ignore_errors=True)
-        rmtree('tests/remote', ignore_errors=True)
+        settings = config.Settings(section='test', config_file=config_file)
+        s3 = S3Conf(settings=settings)
 
+        s3.upload(os.path.join(temp_dir, 'tests/local/'), 'tests/remote/')
+        s3.download('s3://tests/remote/', os.path.join(temp_dir, 'tests/remote/'))
 
-def test_download_files():
-    try:
-        prepare_path('tests/remote/subfolder/')
-        prepare_path('tests/local/')
-        open('tests/remote/file1.txt', 'w').write('file1')
-        open('tests/remote/file2.txt', 'w').write('file2')
-        open('tests/remote/subfolder/file3.txt', 'w').write('file3')
-        open('tests/remote/subfolder/file4.txt', 'w').write('file4')
-
-        s3 = S3Conf(storage='local')
-        s3.download('tests/remote/', 'tests/local/')
-
-        assert os.path.isfile('tests/local/file1.txt')
-        assert os.path.isfile('tests/local/file2.txt')
-        assert os.path.isfile('tests/local/subfolder/file3.txt')
-        assert os.path.isfile('tests/local/subfolder/file4.txt')
-    finally:
-        rmtree('tests/local', ignore_errors=True)
-        rmtree('tests/remote', ignore_errors=True)
+        assert open(os.path.join(temp_dir, 'tests/remote/file1.txt')).read() == 'file1'
+        assert open(os.path.join(temp_dir, 'tests/remote/file2.txt')).read() == 'file2'
+        assert open(os.path.join(temp_dir, 'tests/remote/subfolder/file3.txt')).read() == 'file3'
+        assert open(os.path.join(temp_dir, 'tests/remote/subfolder/file4.txt')).read() == 'file4'
 
 
 def test_no_file_defined():
-    with pytest.raises(exceptions.EnvfilePathNotDefinedError):
-        del os.environ['S3CONF']
-        s3 = S3Conf(storage='local')
+    with pytest.raises(exceptions.EnvfilePathNotDefinedError), tempfile.TemporaryDirectory() as temp_dir:
+        config_file = os.path.join(temp_dir, '.s3conf/config')
+        prepare_path(config_file)
+        open(config_file, 'w').write("""
+        [test]
+            AWS_S3_ENDPOINT_URL=http://localhost:4572
+            AWS_ACCESS_KEY_ID=key
+            AWS_SECRET_ACCESS_KEY=secret
+            AWS_S3_REGION_NAME=region
+        """)
+        os.environ.pop('S3CONF', default=None)
+        settings = config.Settings(section='test', config_file=config_file)
+        s3 = S3Conf(settings=settings)
         s3.get_envfile().as_dict()
 
 
 def test_setup_environment():
-    try:
-        open('tests/test.env', 'w').write(
-            'TEST=123\n'
-            'TEST2=456\n'
-            'S3CONF_MAP=tests/remote/file1.txt:tests/local/file1.txt;'
-            'tests/remote/subfolder/:tests/local/subfolder/;'
-            '\n'
-        )
-        prepare_path('tests/remote/subfolder/')
-        prepare_path('tests/local/')
-        open('tests/remote/file1.txt', 'w').write('file1')
-        open('tests/remote/file2.txt', 'w').write('file2')
-        open('tests/remote/subfolder/file3.txt', 'w').write('file3')
-        open('tests/remote/subfolder/file4.txt', 'w').write('file4')
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file = os.path.join(temp_dir, '.s3conf/config')
+        prepare_path(config_file)
+        open(config_file, 'w').write("""
+        [test]
+            AWS_S3_ENDPOINT_URL=http://localhost:4572
+            AWS_ACCESS_KEY_ID=key
+            AWS_SECRET_ACCESS_KEY=secret
+            AWS_S3_REGION_NAME=region
+            S3CONF=s3://s3conf/test.env
+        """)
+        settings = config.Settings(section='test', config_file=config_file)
+        storage = storages.S3Storage(settings=settings)
+        files.File('s3://tests/remote/file1.txt', storage=storage).write('file1')
+        files.File('s3://tests/remote/file2.txt', storage=storage).write('file2')
+        files.File('s3://tests/remote/subfolder/file3.txt', storage=storage).write('file3')
+        files.File('s3://tests/remote/subfolder/file4.txt', storage=storage).write('file4')
 
-        s3 = S3Conf(storage='local')
-        os.environ['S3CONF'] = 'tests/test.env'
+        file_1 = os.path.join(temp_dir, 'file1.txt')
+        subfolder = os.path.join(temp_dir, 'subfolder')
+        files.File('s3://s3conf/test.env', storage=storage).write("""
+        TEST=123
+        TEST2=456
+        S3CONF_MAP=s3://tests/remote/file1.txt:{};s3://tests/remote/subfolder/:{};
+        """.format(file_1, subfolder))
+
+        s3 = S3Conf(settings=settings)
         env_vars = s3.get_envfile().as_dict()
         s3.downsync(env_vars.get('S3CONF_MAP'))
 
-        assert os.path.isfile('tests/local/file1.txt')
-        assert os.path.isfile('tests/local/subfolder/file3.txt')
-        assert os.path.isfile('tests/local/subfolder/file4.txt')
-    finally:
-        try:
-            os.remove('tests/test.env')
-        except FileNotFoundError:
-            pass
-        rmtree('tests/local', ignore_errors=True)
-        rmtree('tests/remote', ignore_errors=True)
-
-
-def test_file():
-    try:
-        f = files.File('tests/test_file.txt')
-        f.write('test')
-        assert f.read() == b'test'
-    finally:
-        try:
-            os.remove('tests/test_file.txt')
-        except FileNotFoundError:
-            pass
+        assert env_vars['TEST'] == '123'
+        assert env_vars['TEST2'] == '456'
+        assert open(file_1).read() == 'file1'
+        assert open(os.path.join(subfolder, 'file3.txt')).read() == 'file3'
+        assert open(os.path.join(subfolder, 'file4.txt')).read() == 'file4'
 
 
 def test_section_defined_in_settings():
-    try:
-        open('tests/config', 'w').write("""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file = os.path.join(temp_dir, '.s3conf/config')
+        prepare_path(config_file)
+        open(config_file, 'w').write("""
         [test]
             TEST=123
             TEST2=456
@@ -142,20 +125,17 @@ def test_section_defined_in_settings():
         os.environ['TEST'] = '321'
         os.environ['TEST2'] = '654'
         os.environ['TEST3'] = '987'
-        settings = config.Settings(section='test', config_file='tests/config')
+        settings = config.Settings(section='test', config_file=config_file)
         assert settings['TEST'] == '123'
         assert settings['TEST2'] == '456'
         assert settings['TEST3'] == '987'
-    finally:
-        try:
-            os.remove('tests/config')
-        except FileNotFoundError:
-            pass
 
 
 def test_section_not_defined_in_settings():
-    try:
-        open('tests/config', 'w').write("""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file = os.path.join(temp_dir, '.s3conf/config')
+        prepare_path(config_file)
+        open(config_file, 'w').write("""
         [test]
             TEST=123
             TEST2=456
@@ -163,34 +143,25 @@ def test_section_not_defined_in_settings():
         os.environ['TEST'] = '321'
         os.environ['TEST2'] = '654'
         os.environ['TEST3'] = '987'
-        settings = config.Settings(config_file='tests/config')
+        settings = config.Settings(config_file=config_file)
         assert settings['TEST'] == '321'
         assert settings['TEST2'] == '654'
         assert settings['TEST3'] == '987'
-    finally:
-        try:
-            os.remove('tests/config')
-        except FileNotFoundError:
-            pass
 
 
 def test_existing_lookup_config_folder():
-    try:
-        prepare_path('tests/path1/path2/path3/')
-        prepare_path('tests/path1/.s3conf/')
-        open('tests/path1/.s3conf/config', 'w').write("""
-                [test]
-                    TEST=123
-                    TEST2=456
-                """)
-        config_folder = config._lookup_config_folder('tests/path1/path2/path3')
-        base_path = os.path.abspath('tests/path1')
-        assert config_folder == os.path.join(base_path, '.s3conf')
-    finally:
-        try:
-            rmtree('tests/path1')
-        except FileNotFoundError:
-            pass
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file = os.path.join(temp_dir, 'tests/path1/.s3conf/config')
+        prepare_path(config_file)
+        current_path = os.path.join(temp_dir, 'tests/path1/path2/path3/')
+        prepare_path(current_path)
+        open(config_file, 'w').write("""
+        [test]
+            TEST=123
+            TEST2=456
+        """)
+        config_folder = config._lookup_config_folder(current_path)
+        assert config_folder == os.path.dirname(config_file)
 
 
 def test_non_existing_lookup_config_folder():
@@ -200,17 +171,18 @@ def test_non_existing_lookup_config_folder():
 
 
 def test_set_unset_env_var():
-    try:
-        prepare_path('tests/.s3conf/')
-        open('tests/.s3conf/config', 'w').write("""
-                [test]
-                    AWS_S3_ENDPOINT_URL=http://localhost:4572
-                    AWS_ACCESS_KEY_ID=key
-                    AWS_SECRET_ACCESS_KEY=secret
-                    AWS_S3_REGION_NAME=region
-                    S3CONF=s3://s3conf/test.env
-                """)
-        settings = config.Settings(section='test', config_file='tests/.s3conf/config')
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file = os.path.join(temp_dir, '.s3conf/config')
+        prepare_path(config_file)
+        open(config_file, 'w').write("""
+        [test]
+            AWS_S3_ENDPOINT_URL=http://localhost:4572
+            AWS_ACCESS_KEY_ID=key
+            AWS_SECRET_ACCESS_KEY=secret
+            AWS_S3_REGION_NAME=region
+            S3CONF=s3://s3conf/test.env
+        """)
+        settings = config.Settings(section='test', config_file=config_file)
         s3 = S3Conf(settings=settings)
 
         env_file = s3.get_envfile()
@@ -224,8 +196,4 @@ def test_set_unset_env_var():
 
         env_vars = s3.get_envfile().as_dict()
         assert 'TEST' not in env_vars
-    finally:
-        try:
-            rmtree('tests/.s3conf')
-        except FileNotFoundError:
-            pass
+
