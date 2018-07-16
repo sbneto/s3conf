@@ -5,7 +5,7 @@ from tempfile import NamedTemporaryFile
 
 import editor
 
-from .exceptions import FileDoesNotExist
+from . import exceptions
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -60,7 +60,7 @@ class File:
             original_data = b''
             try:
                 original_data = self.read()
-            except FileDoesNotExist:
+            except exceptions.FileDoesNotExist:
                 if not create:
                     raise
             f.write(original_data)

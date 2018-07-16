@@ -1,11 +1,11 @@
 import os
 import logging
+import tempfile
 from shutil import rmtree
 
 import pytest
-from click.testing import CliRunner
 
-from s3conf import client, exceptions
+from s3conf import exceptions
 from s3conf.s3conf import S3Conf
 from s3conf.utils import prepare_path
 from s3conf import files, config
@@ -194,8 +194,8 @@ def test_existing_lookup_config_folder():
 
 
 def test_non_existing_lookup_config_folder():
-    parent_path = os.path.dirname(os.path.abspath('.'))
-    config_folder = config._lookup_config_folder(parent_path)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_folder = config._lookup_config_folder(temp_dir)
     assert config_folder == os.path.join('.', '.s3conf')
 
 
