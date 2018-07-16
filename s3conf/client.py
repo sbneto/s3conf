@@ -8,10 +8,16 @@ import click
 from click.exceptions import UsageError
 import click_log
 
-from . import s3conf, config, files, exceptions, __version__
+from . import s3conf, config, files, exceptions, storages, __version__
 
 
 logger = logging.getLogger(__name__)
+
+
+STORAGES = {
+    's3': storages.S3Storage,
+    'local': storages.LocalStorage,
+}
 
 
 @click.group(invoke_without_command=True)
@@ -89,6 +95,7 @@ def env(section, storage, map_files, phusion, phusion_path, quiet, edit, create)
     try:
         logger.debug('Running env command')
         settings = config.Settings(section=section)
+        storage = STORAGES[storage](settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         if edit:
@@ -152,6 +159,7 @@ def exec_command(ctx, section, command, storage, map_files):
             return
 
         settings = config.Settings(section=section)
+        storage = STORAGES[storage](settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         env_vars = conf.get_envfile().as_dict()
@@ -185,6 +193,7 @@ def download(remote_path, local_path, storage):
     If REMOTE_PATH does not have a trailing slash, it is considered to be a file, and LOCAL_PATH should be a file as
     well.
     """
+    storage = STORAGES[storage]()
     conf = s3conf.S3Conf(storage=storage)
     conf.download(remote_path, local_path)
 
@@ -205,6 +214,7 @@ def upload(remote_path, local_path, storage):
 
     If LOCAL_PATH is a file, the REMOTE_PATH file is created with the same contents.
     """
+    storage = STORAGES[storage]()
     conf = s3conf.S3Conf(storage=storage)
     conf.upload(local_path, remote_path)
 
@@ -239,6 +249,7 @@ def downsync(storage, map_files):
 
         # running operations
         local_path = os.path.join(local_root, os.path.basename(s3conf_env_file).lstrip('/'))
+        storage = STORAGES[storage]()
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         remote_env_file = conf.get_envfile()
         local_env_file = files.EnvFile(local_path)
@@ -280,6 +291,7 @@ def upsync(storage, map_files):
 
         # running operations
         local_path = os.path.join(local_root, os.path.basename(s3conf_env_file).lstrip('/'))
+        storage = STORAGES[storage]()
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         remote_env_file = conf.get_envfile()
         local_env_file = files.EnvFile(local_path)

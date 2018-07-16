@@ -142,15 +142,3 @@ class LocalStorage(BaseStorage):
                 # the relative path of a file to itself is empty
                 # same behavior as in boto3
                 yield ''
-
-
-STORAGES = {
-    's3': S3Storage,
-    'local': LocalStorage,
-}
-
-
-def get_storage(storage, settings=None):
-    if not isinstance(storage, BaseStorage):
-        return STORAGES[storage](settings=settings)
-    return storage
