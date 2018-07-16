@@ -1,14 +1,10 @@
 import os
 import codecs
 import logging
-from tempfile import NamedTemporaryFile
 
-import editor
-
-from .storages import get_storage, strip_prefix
 from .utils import prepare_path
 from .config import Settings
-from . import exceptions, files
+from . import exceptions, files, storages
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -46,28 +42,10 @@ def phusion_dump(environment, path):
             f.write(v + '\n')
 
 
-def setup_environment(storage='s3',
-                      dump=False,
-                      dump_path='/etc/container_environment',
-                      **kwargs):
-    try:
-        conf = S3Conf(storage=storage)
-        env_vars = conf.get_envfile(**kwargs).as_dict()
-        for var_name, var_value in env_vars.items():
-            print('{}={}'.format(var_name, var_value))
-        if dump:
-            phusion_dump(env_vars, dump_path)
-    except ValueError as e:
-        logger.error(e)
-    except Exception as e:
-        logger.error(e)
-        raise e
-
-
 class S3Conf:
-    def __init__(self, storage='s3', settings=None):
+    def __init__(self, storage=None, settings=None):
         self.settings = settings or Settings()
-        self.storage = get_storage(storage, settings=self.settings)
+        self.storage = storage or storages.S3Storage(settings=self.settings)
 
     @property
     def environment_file_path(self):
@@ -113,7 +91,8 @@ class S3Conf:
             for root, dirs, files in os.walk(path):
                 for file in files:
                     file_source = os.path.join(root, file)
-                    file_target = os.path.join(path_target, strip_prefix(os.path.join(root, file), path).lstrip('/'))
+                    file_target = os.path.join(path_target,
+                                               storages.strip_prefix(os.path.join(root, file), path).lstrip('/'))
                     self.storage.write(open(file_source, 'rb'), file_target)
         else:
             self.storage.write(open(path, 'rb'), path_target)
