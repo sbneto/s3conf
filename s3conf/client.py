@@ -238,6 +238,7 @@ def downsync(storage, map_files):
     to this folder.
     """
     local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
+    storage = STORAGES[storage]()
 
     for section in local_resolver.sections():
         settings = config.Settings(section=section)
@@ -249,7 +250,6 @@ def downsync(storage, map_files):
 
         # running operations
         local_path = os.path.join(local_root, os.path.basename(s3conf_env_file).lstrip('/'))
-        storage = STORAGES[storage]()
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         remote_env_file = conf.get_envfile()
         local_env_file = files.EnvFile(local_path)
@@ -281,6 +281,7 @@ def upsync(storage, map_files):
     to the remote S3CONF path.
     """
     local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
+    storage = STORAGES[storage]()
 
     for section in local_resolver.sections():
         settings = config.Settings(section=section)
@@ -291,7 +292,6 @@ def upsync(storage, map_files):
 
         # running operations
         local_path = os.path.join(local_root, os.path.basename(s3conf_env_file).lstrip('/'))
-        storage = STORAGES[storage]()
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         remote_env_file = conf.get_envfile()
         local_env_file = files.EnvFile(local_path)
