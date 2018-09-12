@@ -1,10 +1,10 @@
 import os
 import codecs
 import logging
+from shutil import rmtree
 
 from .utils import prepare_path, md5s3
-from .config import Settings
-from . import exceptions, files, storages
+from . import exceptions, files, storages, config
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -50,7 +50,7 @@ def change_root_dir(file_path, root_dir=None):
 
 class S3Conf:
     def __init__(self, storage=None, settings=None):
-        self.settings = settings or Settings()
+        self.settings = settings or config.Settings()
         self.storage = storage or storages.S3Storage(settings=self.settings)
 
     @property
@@ -62,7 +62,33 @@ class S3Conf:
             raise exceptions.EnvfilePathNotDefinedError()
         return file_name
 
-    def downsync(self, files, root_dir=None):
+    def upsync(self, local_root, map_files=False):
+        # running operations
+        local_path = change_root_dir(os.path.basename(self.environment_file_path).lstrip('/'), local_root)
+        self.upload(local_path, self.environment_file_path)
+
+        if map_files:
+            env_vars = files.EnvFile(local_path).as_dict()
+            local_mapping_root = os.path.join(local_root, 'root')
+            if env_vars.get('S3CONF_MAP'):
+                self.upload_mapping(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
+
+    def downsync(self, local_root, map_files=False, wipe=False):
+        if wipe:
+            rmtree(local_root, ignore_errors=True)
+        # running operations
+        hashes = {}
+        local_path = change_root_dir(os.path.basename(self.environment_file_path).lstrip('/'), local_root)
+        hashes.update(self.download(self.environment_file_path, local_path))
+
+        if map_files:
+            env_vars = files.EnvFile(local_path).as_dict()
+            local_mapping_root = os.path.join(local_root, 'root')
+            if env_vars.get('S3CONF_MAP'):
+                hashes.update(self.download_mapping(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root))
+        return hashes
+
+    def download_mapping(self, files, root_dir=None):
         if isinstance(files, str):
             files = unpack_list(files)
         hashes = {}
@@ -70,7 +96,7 @@ class S3Conf:
             hashes.update(self.download(remote_file, change_root_dir(local_file, root_dir)))
         return hashes
 
-    def upsync(self, files, root_dir=None):
+    def upload_mapping(self, files, root_dir=None):
         if isinstance(files, str):
             files = unpack_list(files)
         for remote_file, local_file in files:
@@ -85,7 +111,8 @@ class S3Conf:
             else:
                 target_name = path_target
             prepare_path(target_name)
-            existing_md5 = md5s3(open(target_name, 'rb')) if os.path.exists(target_name) and not force else None
+            target_file = files.File(target_name)
+            existing_md5 = target_file.md5() if target_file.exists() and not force else None
             if not existing_md5 or existing_md5 != md5hash:
                 source_name = os.path.join(path, file_path).rstrip('/')
                 logger.debug('Transferring file %s to %s', source_name, target_name)
