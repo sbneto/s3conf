@@ -65,8 +65,10 @@ class S3Conf:
     def downsync(self, files, root_dir=None):
         if isinstance(files, str):
             files = unpack_list(files)
+        hashes = {}
         for remote_file, local_file in files:
-            self.download(remote_file, change_root_dir(local_file, root_dir))
+            hashes.update(self.download(remote_file, change_root_dir(local_file, root_dir)))
+        return hashes
 
     def upsync(self, files, root_dir=None):
         if isinstance(files, str):
@@ -90,7 +92,7 @@ class S3Conf:
                 with open(target_name, 'wb') as f:
                     # join might add a trailing slash, but we know it is a file, so we remove it
                     self.storage.open(source_name).read_into_stream(f)
-            hashes[file_path] = md5hash
+            hashes[target_name] = md5hash
         return hashes
 
     def upload(self, path, path_target):
