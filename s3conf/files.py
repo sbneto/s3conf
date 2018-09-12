@@ -42,13 +42,20 @@ class File:
             self._storage = LocalStorage()
         return self._storage
 
+    def read_into_stream(self, stream):
+        self.storage.read_into_stream(self.name, stream=stream)
+
     def read(self):
-        return self.storage.open(self.name).read()
+        return self.storage.read_into_stream(self.name).read()
 
     def exists(self):
         if list(self.storage.list(self.name)):
             return True
         return False
+
+    def md5(self):
+        md5hash, _ = next(self.storage.list(self.name))
+        return md5hash
 
     def write(self, data):
         if isinstance(data, str):
@@ -67,12 +74,17 @@ class File:
             edited_data = editor.edit(filename=f.name)
 
         if edited_data != original_data:
-            self.storage.write(io.BytesIO(edited_data), self.name)
+            self.write(edited_data)
         else:
             logger.warning('File not changed. Nothing to write.')
 
 
 class EnvFile(File):
+    @classmethod
+    def from_file(cls, obj):
+        obj.__class__ = cls
+        return obj
+
     def as_dict(self):
         env_dict = {}
         try:

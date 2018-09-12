@@ -1,13 +1,12 @@
 import os
 import logging
 import tempfile
-from shutil import rmtree
 
 import pytest
 
 from s3conf import exceptions
 from s3conf.s3conf import S3Conf
-from s3conf.utils import prepare_path
+from s3conf.utils import prepare_path, md5s3
 from s3conf import files, config, storages
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
@@ -25,6 +24,64 @@ def test_file():
         f = files.File(test_file)
         f.write('test')
         assert f.read() == b'test'
+
+
+def test_upsync_downsync_files():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_dir = os.path.join(temp_dir, '.s3conf/')
+        config_file = os.path.join(config_dir, 'config')
+
+        prepare_path(os.path.join(config_dir, 'test/root/subfolder/'))
+        open(os.path.join(config_dir, 'test/root/file1.txt'), 'w').write('file1')
+        # creating a large file in order to test amazon's modified md5 e_tag
+        open(os.path.join(config_dir, 'test/root/subfolder/file2.txt'), 'w').write('file2'*1024*1024*2)
+        open(os.path.join(config_dir, 'test/root/subfolder/file3.txt'), 'w').write('file3')
+
+        prepare_path(config_file)
+        open(config_file, 'w').write("""
+        [test]
+            AWS_S3_ENDPOINT_URL=http://localhost:4572
+            AWS_ACCESS_KEY_ID=key
+            AWS_SECRET_ACCESS_KEY=secret
+            AWS_S3_REGION_NAME=region
+            S3CONF=s3://s3conf/test.env
+        """)
+        local_env_file = files.EnvFile(os.path.join(config_dir, 'test/test.env'))
+        local_env_file.write("""
+        TEST=123
+        TEST2=456
+        S3CONF_MAP=s3://s3conf/file1.txt:file1.txt;s3://s3conf/subfolder/:subfolder/;
+        """.format())
+
+        settings = config.Settings(section='test', config_file=config_file)
+        s3 = S3Conf(settings=settings)
+        local_root = os.path.join(config_dir, 'test')
+
+        s3.upsync(local_root, map_files=True, force=True)
+        hashes = s3.downsync(local_root, map_files=True, wipe=True)
+
+        assert hashes == {
+            os.path.join(config_dir, 'test/test.env'): '"7a8b3dd7a1f8160608f506f7489cfa6b"',
+            os.path.join(config_dir, 'test/root/file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
+            os.path.join(config_dir, 'test/root/subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
+            os.path.join(config_dir, 'test/root/subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
+        }
+
+        # editing local env file and uploading
+        local_env_file.write("""
+        TEST=123
+        S3CONF_MAP=s3://s3conf/file1.txt:file1.txt;s3://s3conf/subfolder/:subfolder/;
+        """.format())
+        s3.upsync(local_root, map_files=True)
+
+        # some editing happened after downsync was made
+        s3.get_envfile().set('TEST=789')
+
+        # must fail unless forced
+        with pytest.raises(exceptions.LocalCopyOutdated):
+            s3.upsync(local_root, map_files=True)
+
+        s3.upsync(local_root, map_files=True, force=True)
 
 
 def test_upload_download_files():
@@ -104,7 +161,7 @@ def test_setup_environment():
 
         s3 = S3Conf(settings=settings)
         env_vars = s3.get_envfile().as_dict()
-        s3.downsync(env_vars.get('S3CONF_MAP'))
+        s3.download_mapping(env_vars.get('S3CONF_MAP'))
 
         assert env_vars['TEST'] == '123'
         assert env_vars['TEST2'] == '456'

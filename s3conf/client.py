@@ -20,6 +20,14 @@ STORAGES = {
 }
 
 
+class SectionArgument(click.Argument):
+    def handle_parse_result(self, *args, **kwargs):
+        try:
+            super().handle_parse_result(*args, **kwargs)
+        except click.exceptions.MissingParameter:
+            raise exceptions.EnvfilePathNotDefinedUsageError()
+
+
 @click.group(invoke_without_command=True)
 @click.version_option(version=__version__)
 @click.option('--edit', '-e', is_flag=True)
@@ -58,11 +66,6 @@ def main(ctx, edit, create):
 @main.command('env')
 @click.argument('section',
                 required=False)
-@click.option('--storage',
-              type=click.Choice(['s3', 'local']),
-              default='s3',
-              show_default=True,
-              help='Storage driver to use. Local driver is mainly for testing purpouses.')
 @click.option('--map-files',
               '-m',
               is_flag=True,
@@ -87,7 +90,7 @@ def main(ctx, edit, create):
               '-c',
               is_flag=True,
               help='When trying to edit a file, create it if it does not exist.')
-def env(section, storage, map_files, phusion, phusion_path, quiet, edit, create):
+def env(section, map_files, phusion, phusion_path, quiet, edit, create):
     """
     Reads the file defined by the S3CONF variable and output its contents to stdout. Logs are printed to stderr.
     See options for added functionality: editing file, mapping files, dumping in the phusion-baseimage format, etc.
@@ -95,7 +98,7 @@ def env(section, storage, map_files, phusion, phusion_path, quiet, edit, create)
     try:
         logger.debug('Running env command')
         settings = config.Settings(section=section)
-        storage = STORAGES[storage](settings=settings)
+        storage = STORAGES['s3'](settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         if edit:
@@ -103,7 +106,7 @@ def env(section, storage, map_files, phusion, phusion_path, quiet, edit, create)
         else:
             env_vars = conf.get_envfile().as_dict()
             if env_vars.get('S3CONF_MAP') and map_files:
-                conf.downsync(env_vars.get('S3CONF_MAP'))
+                conf.download_mapping(env_vars.get('S3CONF_MAP'))
             if not quiet:
                 for var_name, var_value in sorted(env_vars.items(), key=lambda x: x[0]):
                     click.echo('{}={}'.format(var_name, var_value))
@@ -116,11 +119,6 @@ def env(section, storage, map_files, phusion, phusion_path, quiet, edit, create)
 
 
 @main.command('exec')
-@click.option('--storage',
-              type=click.Choice(['s3', 'local']),
-              default='s3',
-              show_default=True,
-              help='Storage driver to use. Local driver is mainly for testing purpouses.')
 @click.option('--map-files',
               '-m',
               is_flag=True,
@@ -135,7 +133,7 @@ def env(section, storage, map_files, phusion, phusion_path, quiet, edit, create)
                 nargs=-1,
                 type=click.UNPROCESSED)
 @click.pass_context
-def exec_command(ctx, section, command, storage, map_files):
+def exec_command(ctx, section, command, map_files):
     """
     Sets the process environemnt and executes the [COMMAND] in the same context. Does not modify the current shell
     environment.
@@ -159,12 +157,12 @@ def exec_command(ctx, section, command, storage, map_files):
             return
 
         settings = config.Settings(section=section)
-        storage = STORAGES[storage](settings=settings)
+        storage = STORAGES['s3'](settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         env_vars = conf.get_envfile().as_dict()
         if env_vars.get('S3CONF_MAP') and map_files:
-            conf.downsync(env_vars.get('S3CONF_MAP'))
+            conf.download_mapping(env_vars.get('S3CONF_MAP'))
 
         current_env = os.environ.copy()
         current_env.update(env_vars)
@@ -177,12 +175,7 @@ def exec_command(ctx, section, command, storage, map_files):
 @main.command('download')
 @click.argument('remote_path')
 @click.argument('local_path')
-@click.option('--storage',
-              type=click.Choice(['s3', 'local']),
-              default='s3',
-              show_default=True,
-              help='Storage driver to use. Local driver is mainly for testing purpouses.')
-def download(remote_path, local_path, storage):
+def download(remote_path, local_path):
     """
     Download a file or folder from the S3-like service.
 
@@ -193,7 +186,7 @@ def download(remote_path, local_path, storage):
     If REMOTE_PATH does not have a trailing slash, it is considered to be a file, and LOCAL_PATH should be a file as
     well.
     """
-    storage = STORAGES[storage]()
+    storage = STORAGES['s3']()
     conf = s3conf.S3Conf(storage=storage)
     conf.download(remote_path, local_path)
 
@@ -201,12 +194,7 @@ def download(remote_path, local_path, storage):
 @main.command('upload')
 @click.argument('local_path')
 @click.argument('remote_path')
-@click.option('--storage',
-              type=click.Choice(['s3', 'local']),
-              default='s3',
-              show_default=True,
-              help='Storage driver to use. Local driver is mainly for testing purpouses.')
-def upload(remote_path, local_path, storage):
+def upload(remote_path, local_path):
     """
     Upload a file or folder to the S3-like service.
 
@@ -214,94 +202,57 @@ def upload(remote_path, local_path, storage):
 
     If LOCAL_PATH is a file, the REMOTE_PATH file is created with the same contents.
     """
-    storage = STORAGES[storage]()
+    storage = STORAGES['s3']()
     conf = s3conf.S3Conf(storage=storage)
     conf.upload(local_path, remote_path)
 
 
 @main.command('downsync')
-@click.option('--storage',
-              type=click.Choice(['s3', 'local']),
-              default='s3',
-              show_default=True,
-              help='Storage driver to use. Local driver is mainly for testing purpouses.')
+@click.argument('section', cls=SectionArgument)
 @click.option('--map-files',
               '-m',
               is_flag=True,
               help='If defined, tries to map files from the storage to the local drive as defined by '
                    'the variable S3CONF_MAP read from the S3CONF file using the config folder as the '
                    'root directory.')
-def downsync(storage, map_files):
+def downsync(section, map_files):
     """
     For each section defined in the local config file, creates a folder inside the local config folder
     named after the section. Downloads the environemnt file defined by the S3CONF variable for this section
     to this folder.
     """
-    local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
-    storage = STORAGES[storage]()
-
-    for section in local_resolver.sections():
+    try:
+        storage = STORAGES['s3']()
         settings = config.Settings(section=section)
-
-        # preparing paths
-        s3conf_env_file = settings['S3CONF']
-        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-        rmtree(local_root, ignore_errors=True)
-
-        # running operations
-        local_path = os.path.join(local_root, os.path.basename(s3conf_env_file).lstrip('/'))
         conf = s3conf.S3Conf(storage=storage, settings=settings)
-        remote_env_file = conf.get_envfile()
-        local_env_file = files.EnvFile(local_path)
-        local_env_file.write(remote_env_file.read())
-
-        if map_files:
-            env_vars = local_env_file.as_dict()
-            local_mapping_root = os.path.join(local_root, 'root')
-            if env_vars.get('S3CONF_MAP'):
-                conf.downsync(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
+        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
+        conf.downsync(local_root, map_files=map_files)
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
 @main.command('upsync')
-@click.option('--storage',
-              type=click.Choice(['s3', 'local']),
-              default='s3',
-              show_default=True,
-              help='Storage driver to use. Local driver is mainly for testing purpouses.')
+@click.argument('section', cls=SectionArgument)
 @click.option('--map-files',
               '-m',
               is_flag=True,
               help='If defined, tries to map files from the storage to the local drive as defined by '
                    'the variable S3CONF_MAP read from the S3CONF file using the config folder as the '
                    'root directory.')
-def upsync(storage, map_files):
+def upsync(section, map_files):
     """
     For each section defined in the local config file, look up for a folder inside the local config folder
     named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
     to the remote S3CONF path.
     """
-    local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
-    storage = STORAGES[storage]()
-
-    for section in local_resolver.sections():
+    try:
+        storage = STORAGES['s3']()
         settings = config.Settings(section=section)
-
-        # preparing paths
-        s3conf_env_file = settings['S3CONF']
-        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-
-        # running operations
-        local_path = os.path.join(local_root, os.path.basename(s3conf_env_file).lstrip('/'))
         conf = s3conf.S3Conf(storage=storage, settings=settings)
-        remote_env_file = conf.get_envfile()
-        local_env_file = files.EnvFile(local_path)
-        remote_env_file.write(local_env_file.read())
-
-        if map_files:
-            env_vars = local_env_file.as_dict()
-            local_mapping_root = os.path.join(local_root, 'root')
-            if env_vars.get('S3CONF_MAP'):
-                conf.upsync(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
+        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
+        conf.upsync(local_root, map_files=map_files)
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
 @main.command('set')

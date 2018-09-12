@@ -4,8 +4,9 @@ import boto3
 from botocore.exceptions import ClientError
 from io import BytesIO
 
-from .utils import prepare_path
+from .utils import prepare_path, md5s3
 from .config import Settings
+from .files import File
 from . import exceptions
 
 
@@ -25,8 +26,12 @@ class BaseStorage:
     def __init__(self, settings=None):
         self._settings = settings or Settings()
 
-    def open(self, file_name, stream=None):
+    def read_into_stream(self, file_path, stream=None):
         raise NotImplementedError()
+
+    def open(self, file_name):
+        logger.debug('Reading from %s', file_name)
+        return File(file_name, storage=self)
 
     def write(self, f, file_name):
         raise NotImplementedError()
@@ -40,7 +45,8 @@ class S3Storage(BaseStorage):
         super(__class__, self).__init__(settings=settings)
         self._resource = None
 
-    def get_resource(self):
+    @property
+    def s3(self):
         logger.debug('Getting S3 resource')
         # See how boto resolve credentials in
         # http://boto3.readthedocs.io/en/latest/guide/configuration.html#guide-configuration
@@ -57,11 +63,11 @@ class S3Storage(BaseStorage):
             )
         return self._resource
 
-    def _read_file_into_stream(self, bucket_name, file_name, stream=None):
+    def read_into_stream(self, file_path, stream=None):
         try:
+            bucket_name, file_name = strip_s3_path(file_path)
             stream = stream or BytesIO()
-            s3 = self.get_resource()
-            bucket = s3.Bucket(bucket_name)
+            bucket = self.s3.Bucket(bucket_name)
             bucket.download_fileobj(file_name, stream)
             stream.seek(0)
             return stream
@@ -72,36 +78,24 @@ class S3Storage(BaseStorage):
             else:
                 raise
 
-    def _write_file(self, f, bucket_name, path_target):
-        s3 = self.get_resource()
-        try:
-            bucket = s3.create_bucket(Bucket=bucket_name)
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'BucketAlreadyExists':
-                bucket = s3.Bucket(bucket_name)
-        bucket.upload_fileobj(f, path_target)
-
-    # this is not good, it should return a file like and not mix
-    # a "read-into" functionality with the "open" behavior
-    # but it works for now, must fix this at some point
-    def open(self, file_name, stream=None):
-        logger.debug('Reading from %s', file_name)
-        bucket, file_name = strip_s3_path(file_name)
-        return self._read_file_into_stream(bucket, file_name, stream=stream)
-
     def write(self, f, file_name):
         logger.debug('Writing to %s', file_name)
         bucket, path_target = strip_s3_path(file_name)
-        self._write_file(f, bucket, path_target)
+        try:
+            bucket = self.s3.create_bucket(Bucket=bucket)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'BucketAlreadyExists':
+                bucket = self.s3.Bucket(bucket)
+        bucket.upload_fileobj(f, path_target)
 
     def list(self, path):
         logger.debug('Listing %s', path)
         bucket_name, path = strip_s3_path(path)
-        bucket = self.get_resource().Bucket(bucket_name)
+        bucket = self.s3.Bucket(bucket_name)
         try:
             for obj in bucket.objects.filter(Prefix=path):
                 if not obj.key.endswith('/'):
-                    yield strip_prefix(obj.key, path)
+                    yield obj.e_tag, strip_prefix(obj.key, path)
         except ClientError as e:
             if e.response['Error']['Code'] == 'NoSuchBucket':
                 logger.warning('Bucket does not exist, list() returning empty.')
@@ -114,7 +108,7 @@ class LocalStorage(BaseStorage):
         if path.startswith('s3://'):
             raise ValueError('LocalStorage can not process S3 paths.')
 
-    def open(self, file_name, stream=None):
+    def read_into_stream(self, file_name, stream=None):
         try:
             self._validate_path(file_name)
             stream = stream or BytesIO()
@@ -135,10 +129,10 @@ class LocalStorage(BaseStorage):
         if os.path.isdir(path):
             for root, dirs, files in os.walk(path):
                 for file in files:
-                    yield strip_prefix(os.path.join(root, file), path)
+                    yield md5s3(open(file, 'rb')), strip_prefix(os.path.join(root, file), path)
         else:
             # only yields if it exists
             if os.path.exists(path):
                 # the relative path of a file to itself is empty
                 # same behavior as in boto3
-                yield ''
+                yield md5s3(open(path, 'rb')), ''
