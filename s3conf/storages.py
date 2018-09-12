@@ -40,7 +40,8 @@ class S3Storage(BaseStorage):
         super(__class__, self).__init__(settings=settings)
         self._resource = None
 
-    def get_resource(self):
+    @property
+    def s3(self):
         logger.debug('Getting S3 resource')
         # See how boto resolve credentials in
         # http://boto3.readthedocs.io/en/latest/guide/configuration.html#guide-configuration
@@ -60,8 +61,7 @@ class S3Storage(BaseStorage):
     def _read_file_into_stream(self, bucket_name, file_name, stream=None):
         try:
             stream = stream or BytesIO()
-            s3 = self.get_resource()
-            bucket = s3.Bucket(bucket_name)
+            bucket = self.s3.Bucket(bucket_name)
             bucket.download_fileobj(file_name, stream)
             stream.seek(0)
             return stream
@@ -73,12 +73,11 @@ class S3Storage(BaseStorage):
                 raise
 
     def _write_file(self, f, bucket_name, path_target):
-        s3 = self.get_resource()
         try:
-            bucket = s3.create_bucket(Bucket=bucket_name)
+            bucket = self.s3.create_bucket(Bucket=bucket_name)
         except ClientError as e:
             if e.response['Error']['Code'] == 'BucketAlreadyExists':
-                bucket = s3.Bucket(bucket_name)
+                bucket = self.s3.Bucket(bucket_name)
         bucket.upload_fileobj(f, path_target)
 
     # this is not good, it should return a file like and not mix
@@ -97,7 +96,7 @@ class S3Storage(BaseStorage):
     def list(self, path):
         logger.debug('Listing %s', path)
         bucket_name, path = strip_s3_path(path)
-        bucket = self.get_resource().Bucket(bucket_name)
+        bucket = self.s3.Bucket(bucket_name)
         try:
             for obj in bucket.objects.filter(Prefix=path):
                 if not obj.key.endswith('/'):
