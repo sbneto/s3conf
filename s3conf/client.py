@@ -20,6 +20,14 @@ STORAGES = {
 }
 
 
+class SectionArgument(click.Argument):
+    def handle_parse_result(self, *args, **kwargs):
+        try:
+            super().handle_parse_result(*args, **kwargs)
+        except click.exceptions.MissingParameter:
+            raise exceptions.EnvfilePathNotDefinedUsageError()
+
+
 @click.group(invoke_without_command=True)
 @click.version_option(version=__version__)
 @click.option('--edit', '-e', is_flag=True)
@@ -200,49 +208,51 @@ def upload(remote_path, local_path):
 
 
 @main.command('downsync')
+@click.argument('section', cls=SectionArgument)
 @click.option('--map-files',
               '-m',
               is_flag=True,
               help='If defined, tries to map files from the storage to the local drive as defined by '
                    'the variable S3CONF_MAP read from the S3CONF file using the config folder as the '
                    'root directory.')
-def downsync(map_files):
+def downsync(section, map_files):
     """
     For each section defined in the local config file, creates a folder inside the local config folder
     named after the section. Downloads the environemnt file defined by the S3CONF variable for this section
     to this folder.
     """
-    local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
-    storage = STORAGES['s3']()
-
-    for section in local_resolver.sections():
+    try:
+        storage = STORAGES['s3']()
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
         conf.downsync(local_root, map_files=map_files)
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
 @main.command('upsync')
+@click.argument('section', cls=SectionArgument)
 @click.option('--map-files',
               '-m',
               is_flag=True,
               help='If defined, tries to map files from the storage to the local drive as defined by '
                    'the variable S3CONF_MAP read from the S3CONF file using the config folder as the '
                    'root directory.')
-def upsync(map_files):
+def upsync(section, map_files):
     """
     For each section defined in the local config file, look up for a folder inside the local config folder
     named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
     to the remote S3CONF path.
     """
-    local_resolver = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE)
-    storage = STORAGES['s3']()
-
-    for section in local_resolver.sections():
+    try:
+        storage = STORAGES['s3']()
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
         conf.upsync(local_root, map_files=map_files)
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
 @main.command('set')
