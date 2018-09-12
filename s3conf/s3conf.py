@@ -2,7 +2,7 @@ import os
 import codecs
 import logging
 
-from .utils import prepare_path
+from .utils import prepare_path, md5s3
 from .config import Settings
 from . import exceptions, files, storages
 
@@ -42,6 +42,12 @@ def phusion_dump(environment, path):
             f.write(v + '\n')
 
 
+def change_root_dir(file_path, root_dir=None):
+    if root_dir:
+        file_path = os.path.join(root_dir, file_path.lstrip('/'))
+    return file_path
+
+
 class S3Conf:
     def __init__(self, storage=None, settings=None):
         self.settings = settings or Settings()
@@ -60,17 +66,15 @@ class S3Conf:
         if isinstance(files, str):
             files = unpack_list(files)
         for remote_file, local_file in files:
-            self.download(remote_file, local_file, root_dir=root_dir)
+            self.download(remote_file, change_root_dir(local_file, root_dir))
 
     def upsync(self, files, root_dir=None):
         if isinstance(files, str):
             files = unpack_list(files)
         for remote_file, local_file in files:
-            self.upload(local_file, remote_file, root_dir=root_dir)
+            self.upload(change_root_dir(local_file, root_dir), remote_file)
 
-    def download(self, path, path_target, root_dir=None):
-        if root_dir:
-            path_target = os.path.join(root_dir, path_target.lstrip('/'))
+    def download(self, path, path_target, force=False):
         hashes = {}
         logger.info('Downloading %s to %s', path, path_target)
         for md5hash, file_path in self.storage.list(path):
@@ -79,16 +83,17 @@ class S3Conf:
             else:
                 target_name = path_target
             prepare_path(target_name)
-            with open(target_name, 'wb') as f:
-                # join might add a trailing slash, but we know it is a file, so we remove it
-                # stream=f reads the data into f and returns f as our open file
-                self.storage.open(os.path.join(path, file_path).rstrip('/')).read_into_stream(f)
+            existing_md5 = md5s3(open(target_name, 'rb')) if os.path.exists(target_name) and not force else None
+            if not existing_md5 or existing_md5 != md5hash:
+                source_name = os.path.join(path, file_path).rstrip('/')
+                logger.debug('Transferring file %s to %s', source_name, target_name)
+                with open(target_name, 'wb') as f:
+                    # join might add a trailing slash, but we know it is a file, so we remove it
+                    self.storage.open(source_name).read_into_stream(f)
             hashes[file_path] = md5hash
         return hashes
 
-    def upload(self, path, path_target, root_dir=None):
-        if root_dir:
-            path = os.path.join(root_dir, path.lstrip('/'))
+    def upload(self, path, path_target):
         logger.info('Uploading %s to %s', path, path_target)
         if os.path.isdir(path):
             for root, dirs, files in os.walk(path):
@@ -102,7 +107,7 @@ class S3Conf:
 
     def get_envfile(self):
         logger.info('Loading configs from {}'.format(self.environment_file_path))
-        return files.EnvFile(self.environment_file_path, storage=self.storage)
+        return files.EnvFile.from_file(self.storage.open(self.environment_file_path))
 
     def edit(self, create=False):
-        files.EnvFile(self.environment_file_path, storage=self.storage).edit(create=create)
+        files.EnvFile.from_file(self.storage.open(self.environment_file_path)).edit(create=create)
