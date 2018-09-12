@@ -219,7 +219,7 @@ def downsync(map_files):
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-        conf.upsync(local_root, map_files=map_files)
+        conf.downsync(local_root, map_files=map_files)
 
 
 @main.command('upsync')
