@@ -63,6 +63,15 @@ def expand_path(path, path_target):
     return mapping
 
 
+def raise_out_of_sync(local_file, remote_file):
+    raise exceptions.LocalCopyOutdated(
+        'Upsync failed, target file probably changed since last downsync. Run downsync and redo your '
+        'modifications to avoid conflicts. Offending file:\n\n    %s -> %s ',
+        local_file,
+        remote_file
+    )
+
+
 class S3Conf:
     def __init__(self, storage=None, settings=None):
         self.settings = settings or config.Settings()
@@ -88,7 +97,7 @@ class S3Conf:
         # checking if md5 hashes have not changed in remote storage since our last downsync
         # if force is set, ignore the hash check and upsync anyway
         if not force and hashes[local_environment] != self.get_envfile().md5():
-            raise exceptions.LocalCopyOutdated('Upsync %s -> %s failed', local_environment, self.environment_file_path)
+            raise raise_out_of_sync(local_environment, self.environment_file_path)
         if map_files:
             local_mapping_root = os.path.join(local_root, 'root')
             env_vars = files.EnvFile(local_environment).as_dict()
@@ -99,7 +108,7 @@ class S3Conf:
                     mapping = expand_path(local_path, remote_path)
                     for local_file, remote_file in mapping:
                         if hashes[local_file] != self.storage.open(remote_file).md5():
-                            raise exceptions.LocalCopyOutdated('Upsync %s -> %s failed', local_file, remote_file)
+                            raise raise_out_of_sync(local_file, remote_file)
 
         self.upload(local_environment, self.environment_file_path)
         if map_files:

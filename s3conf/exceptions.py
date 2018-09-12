@@ -23,14 +23,19 @@ class EnvfilePathNotDefinedUsageError(UsageError):
         self.message += error_msg + sections_detected
 
 
+class LocalCopyOutdated(UsageError):
+    def __init__(self, message=None, *args, ctx=None):
+        message = message or ''
+        if message:
+            message = message % args
+            message += '\n'
+        super().__init__(message, ctx=ctx)
+
+
 class EnvfilePathNotDefinedError(Exception):
     pass
 
 
 class FileDoesNotExist(FileNotFoundError):
-    pass
-
-
-class LocalCopyOutdated(RuntimeError):
     pass
 
