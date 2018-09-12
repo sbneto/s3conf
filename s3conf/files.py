@@ -42,8 +42,11 @@ class File:
             self._storage = LocalStorage()
         return self._storage
 
+    def read_into_stream(self, stream):
+        self.storage.read_into_stream(self.name, stream=stream)
+
     def read(self):
-        return self.storage.open(self.name).read()
+        return self.storage.read_into_stream(self.name).read()
 
     def exists(self):
         if list(self.storage.list(self.name)):

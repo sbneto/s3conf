@@ -71,8 +71,9 @@ class S3Conf:
     def download(self, path, path_target, root_dir=None):
         if root_dir:
             path_target = os.path.join(root_dir, path_target.lstrip('/'))
+        hashes = {}
         logger.info('Downloading %s to %s', path, path_target)
-        for file_path in self.storage.list(path):
+        for md5hash, file_path in self.storage.list(path):
             if path.endswith('/') or not path:
                 target_name = os.path.join(path_target, file_path)
             else:
@@ -81,7 +82,9 @@ class S3Conf:
             with open(target_name, 'wb') as f:
                 # join might add a trailing slash, but we know it is a file, so we remove it
                 # stream=f reads the data into f and returns f as our open file
-                self.storage.open(os.path.join(path, file_path).rstrip('/'), stream=f)
+                self.storage.open(os.path.join(path, file_path).rstrip('/')).read_into_stream(f)
+            hashes[file_path] = md5hash
+        return hashes
 
     def upload(self, path, path_target, root_dir=None):
         if root_dir:
