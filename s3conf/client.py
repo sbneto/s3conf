@@ -98,7 +98,7 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
         else:
             env_vars = conf.get_envfile().as_dict()
             if env_vars.get('S3CONF_MAP') and map_files:
-                conf.downsync(env_vars.get('S3CONF_MAP'))
+                conf.download_mapping(env_vars.get('S3CONF_MAP'))
             if not quiet:
                 for var_name, var_value in sorted(env_vars.items(), key=lambda x: x[0]):
                     click.echo('{}={}'.format(var_name, var_value))
@@ -154,7 +154,7 @@ def exec_command(ctx, section, command, map_files):
 
         env_vars = conf.get_envfile().as_dict()
         if env_vars.get('S3CONF_MAP') and map_files:
-            conf.downsync(env_vars.get('S3CONF_MAP'))
+            conf.download_mapping(env_vars.get('S3CONF_MAP'))
 
         current_env = os.environ.copy()
         current_env.update(env_vars)
@@ -217,24 +217,9 @@ def downsync(map_files):
 
     for section in local_resolver.sections():
         settings = config.Settings(section=section)
-
-        # preparing paths
-        s3conf_env_file = settings['S3CONF']
-        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-        rmtree(local_root, ignore_errors=True)
-
-        # running operations
-        local_path = os.path.join(local_root, os.path.basename(s3conf_env_file).lstrip('/'))
         conf = s3conf.S3Conf(storage=storage, settings=settings)
-        remote_env_file = conf.get_envfile()
-        local_env_file = files.EnvFile(local_path)
-        local_env_file.write(remote_env_file.read())
-
-        if map_files:
-            env_vars = local_env_file.as_dict()
-            local_mapping_root = os.path.join(local_root, 'root')
-            if env_vars.get('S3CONF_MAP'):
-                conf.downsync(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
+        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
+        conf.upsync(local_root, map_files=map_files)
 
 
 @main.command('upsync')
@@ -255,23 +240,9 @@ def upsync(map_files):
 
     for section in local_resolver.sections():
         settings = config.Settings(section=section)
-
-        # preparing paths
-        s3conf_env_file = settings['S3CONF']
-        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-
-        # running operations
-        local_path = os.path.join(local_root, os.path.basename(s3conf_env_file).lstrip('/'))
         conf = s3conf.S3Conf(storage=storage, settings=settings)
-        remote_env_file = conf.get_envfile()
-        local_env_file = files.EnvFile(local_path)
-        remote_env_file.write(local_env_file.read())
-
-        if map_files:
-            env_vars = local_env_file.as_dict()
-            local_mapping_root = os.path.join(local_root, 'root')
-            if env_vars.get('S3CONF_MAP'):
-                conf.upsync(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root)
+        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
+        conf.upsync(local_root, map_files=map_files)
 
 
 @main.command('set')
