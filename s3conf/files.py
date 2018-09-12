@@ -70,12 +70,17 @@ class File:
             edited_data = editor.edit(filename=f.name)
 
         if edited_data != original_data:
-            self.storage.write(io.BytesIO(edited_data), self.name)
+            self.write(edited_data)
         else:
             logger.warning('File not changed. Nothing to write.')
 
 
 class EnvFile(File):
+    @classmethod
+    def from_file(cls, obj):
+        obj.__class__ = cls
+        return obj
+
     def as_dict(self):
         env_dict = {}
         try:
