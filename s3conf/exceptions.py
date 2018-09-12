@@ -29,3 +29,8 @@ class EnvfilePathNotDefinedError(Exception):
 
 class FileDoesNotExist(FileNotFoundError):
     pass
+
+
+class LocalCopyOutdated(RuntimeError):
+    pass
+
