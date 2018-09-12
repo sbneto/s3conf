@@ -53,6 +53,10 @@ class File:
             return True
         return False
 
+    def md5(self):
+        md5hash, _ = next(self.storage.list(self.name))
+        return md5hash
+
     def write(self, data):
         if isinstance(data, str):
             data = data.encode('utf-8')
