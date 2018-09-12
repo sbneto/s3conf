@@ -4,7 +4,7 @@ import boto3
 from botocore.exceptions import ClientError
 from io import BytesIO
 
-from .utils import prepare_path
+from .utils import prepare_path, md5s3
 from .config import Settings
 from .files import File
 from . import exceptions
@@ -129,10 +129,10 @@ class LocalStorage(BaseStorage):
         if os.path.isdir(path):
             for root, dirs, files in os.walk(path):
                 for file in files:
-                    yield strip_prefix(os.path.join(root, file), path)
+                    yield md5s3(open(file, 'rb')), strip_prefix(os.path.join(root, file), path)
         else:
             # only yields if it exists
             if os.path.exists(path):
                 # the relative path of a file to itself is empty
                 # same behavior as in boto3
-                yield ''
+                yield md5s3(open(path, 'rb')), ''
