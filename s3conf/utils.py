@@ -40,4 +40,5 @@ def md5s3(file_like,
         md5hash = md5hash.hexdigest()
 
     file_like.seek(0)
-    return md5hash
+    # https://github.com/aws/aws-sdk-net/issues/815
+    return '"{}"'.format(md5hash)
