@@ -6,6 +6,7 @@ from tempfile import NamedTemporaryFile
 import editor
 
 from . import exceptions
+from . import utils
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -63,6 +64,7 @@ class File:
         self.storage.write(io.BytesIO(data), self.name)
 
     def edit(self, create=False):
+        original_md5 = self.md5()
         with NamedTemporaryFile(mode='rb+', buffering=0) as f:
             original_data = b''
             try:
@@ -72,9 +74,13 @@ class File:
                     raise
             f.write(original_data)
             edited_data = editor.edit(filename=f.name)
+            new_md5 = utils.md5s3(f)
 
-        if edited_data != original_data:
-            self.write(edited_data)
+        if original_md5 != new_md5:
+            if original_md5 == self.md5():
+                self.write(edited_data)
+            else:
+                raise exceptions.LocalCopyOutdated('Remote file was edited while editing local copy.')
         else:
             logger.warning('File not changed. Nothing to write.')
 
