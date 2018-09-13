@@ -23,7 +23,7 @@ STORAGES = {
 class SectionArgument(click.Argument):
     def handle_parse_result(self, *args, **kwargs):
         try:
-            super().handle_parse_result(*args, **kwargs)
+            return super().handle_parse_result(*args, **kwargs)
         except click.exceptions.MissingParameter:
             raise exceptions.EnvfilePathNotDefinedUsageError()
 
