@@ -77,6 +77,8 @@ class File:
             new_md5 = utils.md5s3(f)
 
         if original_md5 != new_md5:
+            # this does not solve concurrency problems, but shrinks the
+            # race condition window to a very small period of time
             if original_md5 == self.md5():
                 self.write(edited_data)
             else:
