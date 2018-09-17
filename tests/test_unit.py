@@ -4,9 +4,8 @@ import tempfile
 
 import pytest
 
-from s3conf import exceptions
+from s3conf import exceptions, utils
 from s3conf.s3conf import S3Conf
-from s3conf.utils import prepare_path, md5s3
 from s3conf import files, config, storages
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
@@ -15,7 +14,7 @@ logging.getLogger('s3transfer').setLevel(logging.ERROR)
 
 
 def test_prepare_empty_path():
-    prepare_path('')
+    utils.prepare_path('')
 
 
 def test_file():
@@ -26,18 +25,34 @@ def test_file():
         assert f.read() == b'test'
 
 
+def test_diff():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        f = files.File(os.path.join(temp_dir, 'test.txt'))
+        f.write('test1\ntest2\ntest3\n')
+        with tempfile.NamedTemporaryFile(mode='w+') as temp_f:
+            temp_f.write('test1\ntest2\ntest new\n')
+            diff = f.diff(temp_f)
+            assert ''.join(diff) == '--- remote\n' \
+                                    '+++ local\n' \
+                                    '@@ -1,3 +1,3 @@\n' \
+                                    ' test1\n' \
+                                    ' test2\n' \
+                                    '-test3\n' \
+                                    '+test new\n'
+
+
 def test_upsync_downsync_files():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_dir = os.path.join(temp_dir, '.s3conf/')
         config_file = os.path.join(config_dir, 'config')
 
-        prepare_path(os.path.join(config_dir, 'test/root/subfolder/'))
+        utils.prepare_path(os.path.join(config_dir, 'test/root/subfolder/'))
         open(os.path.join(config_dir, 'test/root/file1.txt'), 'w').write('file1')
         # creating a large file in order to test amazon's modified md5 e_tag
         open(os.path.join(config_dir, 'test/root/subfolder/file2.txt'), 'w').write('file2'*1024*1024*2)
         open(os.path.join(config_dir, 'test/root/subfolder/file3.txt'), 'w').write('file3')
 
-        prepare_path(config_file)
+        utils.prepare_path(config_file)
         open(config_file, 'w').write("""
         [test]
             AWS_S3_ENDPOINT_URL=http://localhost:4572
@@ -87,7 +102,7 @@ def test_upsync_downsync_files():
 def test_upload_download_files():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file = os.path.join(temp_dir, '.s3conf/config')
-        prepare_path(config_file)
+        utils.prepare_path(config_file)
         open(config_file, 'w').write("""
         [test]
             AWS_S3_ENDPOINT_URL=http://localhost:4572
@@ -97,7 +112,7 @@ def test_upload_download_files():
             S3CONF=s3://s3conf/test.env
         """)
 
-        prepare_path(os.path.join(temp_dir, 'tests/local/subfolder/'))
+        utils.prepare_path(os.path.join(temp_dir, 'tests/local/subfolder/'))
         open(os.path.join(temp_dir, 'tests/local/file1.txt'), 'w').write('file1')
         open(os.path.join(temp_dir, 'tests/local/file2.txt'), 'w').write('file2')
         open(os.path.join(temp_dir, 'tests/local/subfolder/file3.txt'), 'w').write('file3')
@@ -118,7 +133,7 @@ def test_upload_download_files():
 def test_no_file_defined():
     with pytest.raises(exceptions.EnvfilePathNotDefinedError), tempfile.TemporaryDirectory() as temp_dir:
         config_file = os.path.join(temp_dir, '.s3conf/config')
-        prepare_path(config_file)
+        utils.prepare_path(config_file)
         open(config_file, 'w').write("""
         [test]
             AWS_S3_ENDPOINT_URL=http://localhost:4572
@@ -135,7 +150,7 @@ def test_no_file_defined():
 def test_setup_environment():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file = os.path.join(temp_dir, '.s3conf/config')
-        prepare_path(config_file)
+        utils.prepare_path(config_file)
         open(config_file, 'w').write("""
         [test]
             AWS_S3_ENDPOINT_URL=http://localhost:4572
@@ -173,7 +188,7 @@ def test_setup_environment():
 def test_section_defined_in_settings():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file = os.path.join(temp_dir, '.s3conf/config')
-        prepare_path(config_file)
+        utils.prepare_path(config_file)
         open(config_file, 'w').write("""
         [test]
             TEST=123
@@ -191,7 +206,7 @@ def test_section_defined_in_settings():
 def test_section_not_defined_in_settings():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file = os.path.join(temp_dir, '.s3conf/config')
-        prepare_path(config_file)
+        utils.prepare_path(config_file)
         open(config_file, 'w').write("""
         [test]
             TEST=123
@@ -209,9 +224,9 @@ def test_section_not_defined_in_settings():
 def test_existing_lookup_config_folder():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file = os.path.join(temp_dir, 'tests/path1/.s3conf/config')
-        prepare_path(config_file)
+        utils.prepare_path(config_file)
         current_path = os.path.join(temp_dir, 'tests/path1/path2/path3/')
-        prepare_path(current_path)
+        utils.prepare_path(current_path)
         open(config_file, 'w').write("""
         [test]
             TEST=123
@@ -230,7 +245,7 @@ def test_non_existing_lookup_config_folder():
 def test_set_unset_env_var():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file = os.path.join(temp_dir, '.s3conf/config')
-        prepare_path(config_file)
+        utils.prepare_path(config_file)
         open(config_file, 'w').write("""
         [test]
             AWS_S3_ENDPOINT_URL=http://localhost:4572

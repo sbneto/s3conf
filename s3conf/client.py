@@ -2,13 +2,12 @@ import logging
 import subprocess
 import shlex
 import os
-from shutil import rmtree
 
 import click
 from click.exceptions import UsageError
 import click_log
 
-from . import s3conf, config, files, exceptions, storages, __version__
+from . import s3conf, config, exceptions, storages, __version__
 
 
 logger = logging.getLogger(__name__)
@@ -255,8 +254,26 @@ def upsync(section, map_files):
         raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
+@main.command('diff')
+@click.argument('section', cls=SectionArgument)
+def diff(section):
+    """
+    For each section defined in the local config file, look up for a folder inside the local config folder
+    named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
+    to the remote S3CONF path.
+    """
+    try:
+        storage = STORAGES['s3']()
+        settings = config.Settings(section=section)
+        conf = s3conf.S3Conf(storage=storage, settings=settings)
+        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
+        click.echo(''.join(conf.diff(local_root)))
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
+
+
 @main.command('set')
-@click.argument('section')
+@click.argument('section', cls=SectionArgument)
 @click.argument('value',
                 required=False)
 @click.option('--create',
@@ -286,7 +303,7 @@ def set(section, value, create):
 
 
 @main.command('unset')
-@click.argument('section')
+@click.argument('section', cls=SectionArgument)
 @click.argument('value',
                 required=False)
 def unset(section, value):

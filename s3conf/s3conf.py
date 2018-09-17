@@ -65,8 +65,10 @@ def expand_path(path, path_target):
 
 def raise_out_of_sync(local_file, remote_file):
     raise exceptions.LocalCopyOutdated(
-        'Upsync failed, target file probably changed since last downsync. Run downsync and redo your '
-        'modifications to avoid conflicts. Offending file:\n\n    %s -> %s ',
+        'Upsync failed, target file probably changed since last downsync.\n'
+        'Run "sconf downsync" and redo your modifications to avoid conflicts. \n'
+        'Run "s3conf diff" to learn more about the modifications.\n'
+        'Offending file:\n\n    %s -> %s ',
         local_file,
         remote_file
     )
@@ -86,6 +88,12 @@ class S3Conf:
             raise exceptions.EnvfilePathNotDefinedError()
         return file_name
 
+    def diff(self, local_root):
+        local_environment = change_root_dir(os.path.basename(self.environment_file_path).lstrip('/'), local_root)
+        with open(local_environment) as f:
+            diff = self.get_envfile().diff(f)
+        return diff
+
     def upsync(self, local_root, map_files=False, force=False):
         # running operations
         local_environment = change_root_dir(os.path.basename(self.environment_file_path).lstrip('/'), local_root)
@@ -97,7 +105,7 @@ class S3Conf:
         # checking if md5 hashes have not changed in remote storage since our last downsync
         # if force is set, ignore the hash check and upsync anyway
         if not force and hashes[local_environment] != self.get_envfile().md5():
-            raise raise_out_of_sync(local_environment, self.environment_file_path)
+            raise_out_of_sync(local_environment, self.environment_file_path)
         if map_files:
             local_mapping_root = os.path.join(local_root, 'root')
             env_vars = files.EnvFile(local_environment).as_dict()
@@ -108,7 +116,7 @@ class S3Conf:
                     mapping = expand_path(local_path, remote_path)
                     for local_file, remote_file in mapping:
                         if hashes[local_file] != self.storage.open(remote_file).md5():
-                            raise raise_out_of_sync(local_file, remote_file)
+                            raise_out_of_sync(local_file, remote_file)
 
         self.upload(local_environment, self.environment_file_path)
         if map_files:
