@@ -2,13 +2,12 @@ import logging
 import subprocess
 import shlex
 import os
-from shutil import rmtree
 
 import click
 from click.exceptions import UsageError
 import click_log
 
-from . import s3conf, config, files, exceptions, storages, __version__
+from . import s3conf, config, exceptions, storages, __version__
 
 
 logger = logging.getLogger(__name__)
@@ -274,7 +273,7 @@ def diff(section):
 
 
 @main.command('set')
-@click.argument('section')
+@click.argument('section', cls=SectionArgument)
 @click.argument('value',
                 required=False)
 @click.option('--create',
@@ -304,7 +303,7 @@ def set(section, value, create):
 
 
 @main.command('unset')
-@click.argument('section')
+@click.argument('section', cls=SectionArgument)
 @click.argument('value',
                 required=False)
 def unset(section, value):
