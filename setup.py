@@ -71,6 +71,7 @@ setup(
         'click>=6.7',
         'python-editor>=1.0.3',
         'click-log>=0.2.1',
+        'configobj>=5.0.6'
     ],
     python_requires='~=3.5',
     setup_requires=[],
