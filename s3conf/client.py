@@ -325,3 +325,24 @@ def unset(section, value):
         env_vars.unset(value)
     except exceptions.EnvfilePathNotDefinedError:
         raise exceptions.EnvfilePathNotDefinedUsageError()
+
+
+@main.command('init')
+@click.argument('section')
+@click.argument('remote-file')
+def unset(section, remote_file):
+    """
+    Creates the .s3conf config folder and .s3conf/config config file
+    with the provided section name and configuration file. It is a very
+    basic config file. Manually edit it in order to add credentials. E.g.:
+
+    s3conf init development s3://my-project/development.env
+    """
+    if not remote_file.startswith('s3://'):
+        raise UsageError('REMOTE_FILE must be a S3-like path. E.g.:\n\n'
+                         's3conf init development s3://my-project/development.env')
+    logger.debug('Running init command')
+    config_file_path = os.path.join(os.getcwd(), '.s3conf', 'config')
+    config_file = config.ConfigFileResolver(config_file_path, section=section)
+    config_file.set('S3CONF', remote_file)
+    config_file.save()
