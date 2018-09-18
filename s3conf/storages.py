@@ -86,6 +86,8 @@ class S3Storage(BaseStorage):
         except ClientError as e:
             if e.response['Error']['Code'] == 'BucketAlreadyExists':
                 bucket = self.s3.Bucket(bucket)
+            else:
+                raise e
         bucket.upload_fileobj(f, path_target)
 
     def list(self, path):
