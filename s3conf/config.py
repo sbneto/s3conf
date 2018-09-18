@@ -1,8 +1,9 @@
 import os
 import logging
-from configparser import ConfigParser
+from configobj import ConfigObj
 
 from .files import File
+from .utils import prepare_path
 
 
 logger = logging.getLogger(__name__)
@@ -42,8 +43,7 @@ class ConfigFileResolver:
     @property
     def config(self):
         if not self._config:
-            self._config = ConfigParser()
-            self._config.read(self.config_file)
+            self._config = ConfigObj(self.config_file)
         return self._config
 
     @config.setter
@@ -51,13 +51,23 @@ class ConfigFileResolver:
         self._config = value
 
     def get(self, item, default=None, section=None):
-        return self.config.get(section or self.section, item, fallback=default)
+        try:
+            return self.config[section or self.section][item]
+        except KeyError:
+            return default
+
+    def set(self, item, value, section=None):
+        self.config.setdefault(section or self.section, {})[item] = value
 
     def edit(self, create=False):
         File(self.config_file).edit(create=create)
 
+    def save(self):
+        prepare_path(self.config_file)
+        self.config.write()
+
     def sections(self):
-        return self.config.sections()
+        return list(self.config)
 
 
 class Settings:
