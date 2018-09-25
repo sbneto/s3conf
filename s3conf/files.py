@@ -55,8 +55,14 @@ class File:
             return True
         return False
 
-    def md5(self):
-        md5hash, _ = next(self.storage.list(self.name))
+    def md5(self, raise_if_not_exists=True):
+        try:
+            md5hash, _ = next(self.storage.list(self.name))
+        except StopIteration:
+            if raise_if_not_exists:
+                raise exceptions.FileDoesNotExist(self.name)
+            else:
+                md5hash = None
         return md5hash
 
     def write(self, data):
@@ -90,14 +96,17 @@ class File:
 
             f.write(data_to_edit)
 
-            original_md5 = self.md5()
+            original_md5 = self.md5(raise_if_not_exists=False)
             edited_data = editor.edit(filename=f.name)
             new_md5 = utils.md5s3(f)
 
-            if original_md5 != new_md5:
+            if not edited_data and not original_md5:
+                logger.warning('Remote file does not exist and no input was provided. '
+                               'No attempt to write will be done.')
+            elif original_md5 != new_md5:
                 # this does not solve concurrency problems, but shrinks the
                 # race condition window to a very small period of time
-                if original_md5 == self.md5():
+                if original_md5 == self.md5(raise_if_not_exists=False):
                     self.write(edited_data)
                 else:
                     f_str = io.TextIOWrapper(f)
