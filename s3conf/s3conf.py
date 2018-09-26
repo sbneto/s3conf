@@ -118,9 +118,14 @@ class S3Conf:
                         if hashes[local_file] != self.storage.open(remote_file).md5():
                             raise_out_of_sync(local_file, remote_file)
 
-        self.upload(local_environment, self.environment_file_path)
+        hashes = {}
+        hashes.update(self.upload(local_environment, self.environment_file_path))
         if map_files:
-            self.upload_mapping(file_map_list, root_dir=local_mapping_root)
+            hashes.update(self.upload_mapping(file_map_list, root_dir=local_mapping_root))
+
+        md5_hash_file_name = os.path.join(local_root, '.md5')
+        json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
+        return hashes
 
     def downsync(self, local_root, map_files=False, wipe=False):
         if wipe:
@@ -149,10 +154,12 @@ class S3Conf:
         return hashes
 
     def upload_mapping(self, files, root_dir=None):
+        hashes = {}
         if isinstance(files, str):
             files = unpack_list(files)
         for remote_file, local_file in files:
-            self.upload(change_root_dir(local_file, root_dir), remote_file)
+            hashes.update(self.upload(change_root_dir(local_file, root_dir), remote_file))
+        return hashes
 
     def download(self, path, path_target, force=False):
         hashes = {}
@@ -176,9 +183,13 @@ class S3Conf:
 
     def upload(self, path, path_target):
         logger.info('Uploading %s to %s', path, path_target)
+        hashes = {}
         mapping = expand_path(path, path_target)
         for file_source, file_target in mapping:
-            self.storage.write(open(file_source, 'rb'), file_target)
+            file = self.storage.open(file_target)
+            file.write(open(file_source, 'rb'))
+            hashes[file_source] = file.md5()
+        return hashes
 
     def get_envfile(self):
         logger.info('Loading configs from {}'.format(self.environment_file_path))

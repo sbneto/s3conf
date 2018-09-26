@@ -68,7 +68,10 @@ class File:
     def write(self, data):
         if isinstance(data, str):
             data = data.encode('utf-8')
-        self.storage.write(io.BytesIO(data), self.name)
+        if isinstance(data, bytes):
+            self.storage.write(io.BytesIO(data), self.name)
+        else:
+            self.storage.write(data, self.name)
 
     def diff(self, file_stream, fromfile='remote', tofile='local', **kwargs):
         file_stream.seek(0)

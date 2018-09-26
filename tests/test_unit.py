@@ -89,6 +89,21 @@ def test_upsync_downsync_files():
         """.format())
         s3.upsync(local_root, map_files=True)
 
+        # some more editing and uploading
+        local_env_file.write("""
+        TEST=1234
+        TEST2=4321
+        S3CONF_MAP=s3://s3conf/file1.txt:file1.txt;s3://s3conf/subfolder/:subfolder/;
+        """.format())
+        s3.upsync(local_root, map_files=True)
+
+        # back to original
+        local_env_file.write("""
+        TEST=123
+        S3CONF_MAP=s3://s3conf/file1.txt:file1.txt;s3://s3conf/subfolder/:subfolder/;
+        """.format())
+        s3.upsync(local_root, map_files=True)
+
         # some editing happened after downsync was made
         s3.get_envfile().set('TEST=789')
 
