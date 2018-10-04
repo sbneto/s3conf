@@ -115,8 +115,12 @@ class S3Conf:
                     local_path = change_root_dir(local_path, local_mapping_root)
                     mapping = expand_path(local_path, remote_path)
                     for local_file, remote_file in mapping:
-                        if hashes[local_file] != self.storage.open(remote_file).md5():
-                            raise_out_of_sync(local_file, remote_file)
+                        current_hash = hashes.get(local_file)
+                        if current_hash:
+                            if current_hash != self.storage.open(remote_file).md5():
+                                raise_out_of_sync(local_file, remote_file)
+                        else:
+                            logger.warning('New mapped file detected: %s', local_file)
 
         hashes = {}
         hashes.update(self.upload(local_environment, self.environment_file_path))
@@ -138,6 +142,7 @@ class S3Conf:
         if map_files:
             env_vars = files.EnvFile(local_path).as_dict()
             local_mapping_root = os.path.join(local_root, 'root')
+            prepare_path(local_mapping_root, is_folder=True)
             if env_vars.get('S3CONF_MAP'):
                 hashes.update(self.download_mapping(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root))
 
