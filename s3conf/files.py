@@ -101,7 +101,7 @@ class File:
 
             original_md5 = self.md5(raise_if_not_exists=False)
             edited_data = editor.edit(filename=f.name)
-            new_md5 = utils.md5s3(f)
+            new_md5 = utils.md5s3(io.BytesIO(edited_data))
 
             if not edited_data and not original_md5:
                 logger.warning('Remote file does not exist and no input was provided. '
@@ -112,7 +112,7 @@ class File:
                 if original_md5 == self.md5(raise_if_not_exists=False):
                     self.write(edited_data)
                 else:
-                    f_str = io.TextIOWrapper(f)
+                    f_str = io.TextIOWrapper(io.BytesIO(edited_data))
                     diff = self.diff(f_str)
                     e = exceptions.LocalCopyOutdated(
                         'Remote file was edited while editing local copy. Diff:\n\n{}'.format(''.join(diff))
