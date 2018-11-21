@@ -280,7 +280,7 @@ def diff(section):
               '-c',
               is_flag=True,
               help='When trying to set a variable, create the file if it does not exist.')
-def set(section, value, create):
+def set_variable(section, value, create):
     """
     Set value of a variable in an environment file for the given section.
     If the variable is already defined, its value is replaced, otherwise, it is added to the end of the file.
@@ -306,7 +306,7 @@ def set(section, value, create):
 @click.argument('section', cls=SectionArgument)
 @click.argument('value',
                 required=False)
-def unset(section, value):
+def unset_variable(section, value):
     """
     Unset a variable in an environment file for the given section.
     The value is given is the variable name, e.g.:
@@ -330,7 +330,7 @@ def unset(section, value):
 @main.command('init')
 @click.argument('section')
 @click.argument('remote-file')
-def unset(section, remote_file):
+def init(section, remote_file):
     """
     Creates the .s3conf config folder and .s3conf/config config file
     with the provided section name and configuration file. It is a very
