@@ -23,7 +23,7 @@ export S3CONF=s3://mybucket/myfile.env
 
 If you have a `aws-cli` working, this should already be enough to get you started.
 
-## Environemnt Configuration
+### S3 Credentials
 
 In addition to the `S3CONF` environment variable, the client will also search for these 
 authentication variables if they are provided:
@@ -40,37 +40,46 @@ The client also searchs for the regular `AWS_` variables, but their `S3CONF_*` v
 They are particularly useful when using non-aws blob storage services that are compatible with S3, 
 such as DigitalOcean Spaces, without messing your AWS credentials.
 
-## Configuration Files
+## Project Environments Configuration
 
-The client can use a configuration file `.s3conf/config` that can be located in any folder along the
-current folder path. E.g.: `/usr/sbneto/.s3conf/config` will be used when inside the folder 
-`/usr/sbneto/data`.
+The recommended way to manage environment variables for a project is to create a `.s3conf/config` file
+in the project folder. This file should have the `S3CONF` variable for each existing evironemnt in the
+project. Since the credentials to access the bucket are not included in the file, it should be safe to
+commit this file together with project code. 
 
-This file is an INI file as described in Pyhton's [ConfigParser](https://docs.python.org/3/library/configparser.html).
-You can define multiple sections in your configuration file, as well as a `DEFAULT` one:
+To facilitate creating an environemt for a project, we can use the client command `init`. For example,
+issuing the command 
+
+```bash
+s3conf init dev s3://my-dev-bucket/myfile.env
+```
+ 
+in the folder `/usr/sbneto/project` will create the file `/usr/sbneto/project/.s3conf/config` if it does
+not exist and add the following lines to it:
 
 ```ini
-[DEFAULT]
-S3CONF_ACCESS_KEY_ID=***access_key***
-S3CONF_SECRET_ACCESS_KEY=***secret_access_key***
-S3CONF_S3_REGION_NAME=***region_name***
-S3CONF_S3_ENDPOINT_URL=***endpoint_url***
-
 [dev]
 S3CONF=s3://my-dev-bucket/myfile.env
-
-[prod]
-S3CONF=s3://my-prod-bucket/myfile.env
 ```
 
-When a section is provided to the client, the values in the config file take precedence 
-over the environemnt variables:
+This file is an INI file as described in Pyhton's [ConfigParser](https://docs.python.org/3/library/configparser.html).
+Each section of this file is considered a new environment in the project. More variables can be manually defined
+in each section (per section S3 credentials, for example).
+
+When the section is provided to the client, the variables in the `.s3conf/config` associated section
+take precedence over the environment ones:
 
 ```bash
 s3conf env dev
 ```
 
-## Editing Your Config Files
+is equivalent to
+
+```bash
+S3CONF=s3://my-dev-bucket/myfile.env s3conf env
+```
+
+### Editing Your Environemnts Config File
 
 A convenient way to edit the Configuration File is to use the following command:
 
@@ -86,7 +95,7 @@ is found in the current directory path, you can use the `-c` flag to create it i
 s3conf -ec
 ```
 
-## Setting the Environment
+## Retrieving the Environment File
 
 Once credentials are in place, we want to get the data from the file defined in the `S3CONF` environment variable.
 This can be achieved with the following command: 
@@ -107,22 +116,25 @@ ENV_VAR_2=some_data_2
 ENV_VAR_3=some_data_3
 ```
 
+### Setting the Environment
+
 The output can be used to set the environment with `export`:
 
 ```bash
-$ export $(s3conf env)
+$ export $(s3conf env dev)
 ```
 
 ## Editing Your Environment File
 
-Since editing the environment file is also common, the client provides a convenient way to manipulate it:
+The client provides a convenient way to manipulate the environemnt file referenced by `S3CONF` variable: 
 
 ```bash
 s3conf env -e
 ```
 
-This will download the environment file to a temporary file, open your default file editor (much like as 
-`crontab -e` works) and upload the file back to the blob storage service only if edits were made.
+This will download the environment file from the S3-like storage to a temporary file, open your 
+default file editor for manual editing (much like as `crontab -e` works) and upload the file back 
+to the blob storage service if any edits were made.
 
 ## Setting/Unsetting a singe Environment Variable
 
@@ -141,10 +153,11 @@ s3conf unset dev ENV_VAR_1
 ## Mapping Files
 
 Besides setting evironment variables, we sometimes need to grab some configuration files. To do so, the
-client provides very convenient way to store and download these files.
+client provides convenient way to store and download these files.
 
-If we define a variable named `S3CONF_MAP` inside the file defined in `S3CONF`, we can tell the client
-to download the files as defined in the former variable. One example of this mapping would be the following:
+If we define a variable named `S3CONF_MAP` inside the environemnt file referenced by `S3CONF`, we can 
+tell the client to download the files as defined in the former variable. 
+One example of this mapping would be the following:
 
 ```bash
 S3CONF_MAP=s3://my_bucket/config.file:/app/config/my.file;s3://my_bucket/etc/app_config_folder/:/etc/app_config_folder/;
