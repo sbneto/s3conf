@@ -221,8 +221,8 @@ def downsync(section, map_files):
     to this folder.
     """
     try:
-        storage = STORAGES['s3']()
         settings = config.Settings(section=section)
+        storage = STORAGES['s3'](settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
         conf.downsync(local_root, map_files=map_files)
@@ -245,8 +245,8 @@ def upsync(section, map_files):
     to the remote S3CONF path.
     """
     try:
-        storage = STORAGES['s3']()
         settings = config.Settings(section=section)
+        storage = STORAGES['s3'](settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
         conf.upsync(local_root, map_files=map_files)
@@ -263,8 +263,8 @@ def diff(section):
     to the remote S3CONF path.
     """
     try:
-        storage = STORAGES['s3']()
         settings = config.Settings(section=section)
+        storage = STORAGES['s3'](settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
         click.echo(''.join(conf.diff(local_root)))
