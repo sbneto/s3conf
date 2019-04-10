@@ -345,4 +345,6 @@ def init(section, remote_file):
     config_file_path = os.path.join(os.getcwd(), '.s3conf', 'config')
     config_file = config.ConfigFileResolver(config_file_path, section=section)
     config_file.set('S3CONF', remote_file)
+    gitignore_file_path = os.path.join(os.getcwd(), '.s3conf', '.gitignore')
     config_file.save()
+    open(gitignore_file_path, 'w').write('*\n!config\n')
