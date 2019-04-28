@@ -52,7 +52,7 @@ def main(ctx, edit, create):
             if ctx.invoked_subcommand is None:
                 settings = config.Settings()
                 logger.debug('Using config file %s', settings.config_file)
-                config.ConfigFileResolver(settings.config_file).edit(create=create)
+                STORAGES['local'](settings=settings).open(settings.config_file).edit(create=create)
                 return
             else:
                 raise UsageError('Edit should not be called with a subcommand.')
@@ -105,8 +105,8 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
             conf.edit(create=create)
         else:
             env_vars = conf.get_envfile().as_dict()
-            if env_vars.get('S3CONF_MAP') and map_files:
-                conf.download_mapping(env_vars.get('S3CONF_MAP'))
+            if map_files:
+                conf.pull()
             if not quiet:
                 for var_name, var_value in sorted(env_vars.items(), key=lambda x: x[0]):
                     click.echo('{}={}'.format(var_name, var_value))
@@ -116,6 +116,26 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
         raise exceptions.EnvfilePathNotDefinedUsageError()
     except exceptions.FileDoesNotExist as e:
         raise UsageError('The file {} does not exist. Try "-c" option if you want to create it.'.format(str(e)))
+
+
+@main.command('push')
+@click.argument('section', cls=SectionArgument)
+@click.option('--force',
+              '-f',
+              is_flag=True)
+def push(section, force):
+    """
+    For each section defined in the local config file, look up for a folder inside the local config folder
+    named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
+    to the remote S3CONF path.
+    """
+    try:
+        settings = config.Settings(section=section)
+        storage = STORAGES['s3'](settings=settings)
+        conf = s3conf.S3Conf(storage=storage, settings=settings)
+        conf.push(force=force)
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
 @main.command('exec')
