@@ -94,59 +94,34 @@ class S3Conf:
             diff = self.get_envfile().diff(f)
         return diff
 
-    def upsync(self, local_root, map_files=False, force=False):
-        # running operations
-        local_environment = change_root_dir(os.path.basename(self.environment_file_path).lstrip('/'), local_root)
-
+    def push(self, force=False):
         if not force:
-            md5_hash_file_name = os.path.join(local_root, '.md5')
+            md5_hash_file_name = os.path.join(self.settings.cache_dir, 'md5')
             hashes = json.load(open(md5_hash_file_name))
 
-        # checking if md5 hashes have not changed in remote storage since our last downsync
-        # if force is set, ignore the hash check and upsync anyway
-        if not force and hashes[local_environment] != self.get_envfile().md5():
-            raise_out_of_sync(local_environment, self.environment_file_path)
-        if map_files:
-            local_mapping_root = os.path.join(local_root, 'root')
-            env_vars = files.EnvFile(local_environment).as_dict()
-            file_map_list = unpack_list(env_vars.get('S3CONF_MAP'))
-            if not force:
-                for remote_path, local_path in file_map_list:
-                    local_path = change_root_dir(local_path, local_mapping_root)
-                    mapping = expand_path(local_path, remote_path)
-                    for local_file, remote_file in mapping:
-                        current_hash = hashes.get(local_file)
-                        if current_hash:
-                            if current_hash != self.storage.open(remote_file).md5():
-                                raise_out_of_sync(local_file, remote_file)
-                        else:
-                            logger.warning('New mapped file detected: %s', local_file)
+        file_map_list = unpack_list(self.settings.get('S3CONF_MAP'))
+        if not force:
+            for remote_path, local_path in file_map_list:
+                local_path = change_root_dir(local_path, self.settings.root_folder)
+                mapping = expand_path(local_path, remote_path)
+                for local_file, remote_file in mapping:
+                    current_hash = hashes.get(local_file)
+                    if current_hash:
+                        if current_hash != self.storage.open(remote_file).md5():
+                            raise_out_of_sync(local_file, remote_file)
+                    else:
+                        logger.warning('New mapped file detected: %s', local_file)
 
         hashes = {}
-        hashes.update(self.upload(local_environment, self.environment_file_path))
-        if map_files:
-            hashes.update(self.upload_mapping(file_map_list, root_dir=local_mapping_root))
+        hashes.update(self.upload_mapping(file_map_list, root_dir=self.settings.root_folder))
 
-        md5_hash_file_name = os.path.join(local_root, '.md5')
+        md5_hash_file_name = os.path.join(self.settings.cache_dir, 'md5')
         json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
-    def downsync(self, local_root, map_files=False, wipe=False):
-        if wipe:
-            rmtree(local_root, ignore_errors=True)
-        # running operations
-        hashes = {}
-        local_path = change_root_dir(os.path.basename(self.environment_file_path).lstrip('/'), local_root)
-        hashes.update(self.download(self.environment_file_path, local_path))
-
-        if map_files:
-            env_vars = files.EnvFile(local_path).as_dict()
-            local_mapping_root = os.path.join(local_root, 'root')
-            prepare_path(local_mapping_root, is_folder=True)
-            if env_vars.get('S3CONF_MAP'):
-                hashes.update(self.download_mapping(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root))
-
-        md5_hash_file_name = os.path.join(local_root, '.md5')
+    def pull(self):
+        hashes = self.download_mapping(self.settings.get('S3CONF_MAP'), root_dir=self.settings.root_folder)
+        md5_hash_file_name = os.path.join(self.settings.cache_dir, 'md5')
         json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
