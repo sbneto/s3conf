@@ -50,8 +50,9 @@ def main(ctx, edit, create):
         logger.debug('Running main entrypoint')
         if edit:
             if ctx.invoked_subcommand is None:
-                logger.debug('Using config file %s', config.LOCAL_CONFIG_FILE)
-                config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).edit(create=create)
+                settings = config.Settings()
+                logger.debug('Using config file %s', settings.config_file)
+                config.ConfigFileResolver(settings.config_file).edit(create=create)
                 return
             else:
                 raise UsageError('Edit should not be called with a subcommand.')
@@ -144,11 +145,7 @@ def exec_command(ctx, section, command, map_files):
     """
     try:
         logger.debug('Running exec command')
-        existing_sections = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).sections()
         command = ' '.join(command)
-        if section not in existing_sections:
-            command = '{} {}'.format(section, command) if command else section
-            section = None
 
         if not command:
             logger.warning('No command detected.')
@@ -204,72 +201,6 @@ def upload(remote_path, local_path):
     storage = STORAGES['s3']()
     conf = s3conf.S3Conf(storage=storage)
     conf.upload(local_path, remote_path)
-
-
-@main.command('downsync')
-@click.argument('section', cls=SectionArgument)
-@click.option('--map-files',
-              '-m',
-              is_flag=True,
-              help='If defined, tries to map files from the storage to the local drive as defined by '
-                   'the variable S3CONF_MAP read from the S3CONF file using the config folder as the '
-                   'root directory.')
-def downsync(section, map_files):
-    """
-    For each section defined in the local config file, creates a folder inside the local config folder
-    named after the section. Downloads the environemnt file defined by the S3CONF variable for this section
-    to this folder.
-    """
-    try:
-        settings = config.Settings(section=section)
-        storage = STORAGES['s3'](settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
-        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-        conf.downsync(local_root, map_files=map_files)
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
-
-
-@main.command('upsync')
-@click.argument('section', cls=SectionArgument)
-@click.option('--map-files',
-              '-m',
-              is_flag=True,
-              help='If defined, tries to map files from the storage to the local drive as defined by '
-                   'the variable S3CONF_MAP read from the S3CONF file using the config folder as the '
-                   'root directory.')
-def upsync(section, map_files):
-    """
-    For each section defined in the local config file, look up for a folder inside the local config folder
-    named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
-    to the remote S3CONF path.
-    """
-    try:
-        settings = config.Settings(section=section)
-        storage = STORAGES['s3'](settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
-        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-        conf.upsync(local_root, map_files=map_files)
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
-
-
-@main.command('diff')
-@click.argument('section', cls=SectionArgument)
-def diff(section):
-    """
-    For each section defined in the local config file, look up for a folder inside the local config folder
-    named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
-    to the remote S3CONF path.
-    """
-    try:
-        settings = config.Settings(section=section)
-        storage = STORAGES['s3'](settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
-        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-        click.echo(''.join(conf.diff(local_root)))
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
 @main.command('set')
