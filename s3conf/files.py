@@ -32,17 +32,10 @@ def parse_env_var(value):
 
 
 class File:
-    def __init__(self, name, storage=None):
+    def __init__(self, name, storage):
         self.name = name
-        self._storage = storage
+        self.storage = storage
         self._stream = None
-
-    @property
-    def storage(self):
-        if not self._storage:
-            from .storages import LocalStorage
-            self._storage = LocalStorage()
-        return self._storage
 
     def read_into_stream(self, stream):
         self.storage.read_into_stream(self.name, stream=stream)
