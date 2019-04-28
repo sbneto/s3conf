@@ -97,40 +97,24 @@ def test_push_pull_files():
             os.path.join(settings.root_folder, 'subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
-        # must fail unless forced
-        with pytest.raises(exceptions.LocalCopyOutdated):
-            s3.upsync(local_root, map_files=True)
+        # # must fail unless forced
+        # with pytest.raises(exceptions.LocalCopyOutdated):
+        #     s3.upsync(local_root, map_files=True)
 
 
 def test_upload_download_files():
     with tempfile.TemporaryDirectory() as temp_dir:
-        config_file = os.path.join(temp_dir, '.s3conf/config')
-        utils.prepare_path(config_file)
-        open(config_file, 'w').write("""
-        [test]
-            AWS_S3_ENDPOINT_URL=http://localhost:4572
-            AWS_ACCESS_KEY_ID=key
-            AWS_SECRET_ACCESS_KEY=secret
-            AWS_S3_REGION_NAME=region
-            S3CONF=s3://s3conf/test.env
-        """)
-
-        utils.prepare_path(os.path.join(temp_dir, 'tests/local/subfolder/'))
-        open(os.path.join(temp_dir, 'tests/local/file1.txt'), 'w').write('file1')
-        open(os.path.join(temp_dir, 'tests/local/file2.txt'), 'w').write('file2')
-        open(os.path.join(temp_dir, 'tests/local/subfolder/file3.txt'), 'w').write('file3')
-        open(os.path.join(temp_dir, 'tests/local/subfolder/file4.txt'), 'w').write('file4')
+        config_file, _ = _setup_basic_test(temp_dir)
 
         settings = config.Settings(section='test', config_file=config_file)
         s3 = S3Conf(settings=settings)
 
-        s3.upload(os.path.join(temp_dir, 'tests/local/'), 's3://tests/remote/')
-        s3.download('s3://tests/remote/', os.path.join(temp_dir, 'tests/remote/'))
+        s3.upload(settings.root_folder, 's3://tests/remote/')
+        s3.download('s3://tests/remote/', os.path.join(temp_dir, 'remote/'))
 
-        assert open(os.path.join(temp_dir, 'tests/remote/file1.txt')).read() == 'file1'
-        assert open(os.path.join(temp_dir, 'tests/remote/file2.txt')).read() == 'file2'
-        assert open(os.path.join(temp_dir, 'tests/remote/subfolder/file3.txt')).read() == 'file3'
-        assert open(os.path.join(temp_dir, 'tests/remote/subfolder/file4.txt')).read() == 'file4'
+        assert open(os.path.join(temp_dir, 'remote/file1.txt')).read() == 'file1'
+        assert open(os.path.join(temp_dir, 'remote/subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
+        assert open(os.path.join(temp_dir, 'remote/subfolder/file3.txt')).read() == 'file3'
 
 
 def test_no_file_defined():
@@ -152,40 +136,20 @@ def test_no_file_defined():
 
 def test_setup_environment():
     with tempfile.TemporaryDirectory() as temp_dir:
-        config_file = os.path.join(temp_dir, '.s3conf/config')
-        utils.prepare_path(config_file)
-        open(config_file, 'w').write("""
-        [test]
-            AWS_S3_ENDPOINT_URL=http://localhost:4572
-            AWS_ACCESS_KEY_ID=key
-            AWS_SECRET_ACCESS_KEY=secret
-            AWS_S3_REGION_NAME=region
-            S3CONF=s3://s3conf/test.env
-        """)
+        config_file, _ = _setup_basic_test(temp_dir)
         settings = config.Settings(section='test', config_file=config_file)
-        storage = storages.S3Storage(settings=settings)
-        files.File('s3://tests/remote/file1.txt', storage=storage).write('file1')
-        files.File('s3://tests/remote/file2.txt', storage=storage).write('file2')
-        files.File('s3://tests/remote/subfolder/file3.txt', storage=storage).write('file3')
-        files.File('s3://tests/remote/subfolder/file4.txt', storage=storage).write('file4')
-
-        file_1 = os.path.join(temp_dir, 'file1.txt')
-        subfolder = os.path.join(temp_dir, 'subfolder')
-        files.File('s3://s3conf/test.env', storage=storage).write("""
-        TEST=123
-        TEST2=456
-        S3CONF_MAP=s3://tests/remote/file1.txt:{};s3://tests/remote/subfolder/:{};
-        """.format(file_1, subfolder))
-
         s3 = S3Conf(settings=settings)
+
+        files.File('s3://s3conf/test.env', storage=s3.storage).write('TEST=123\nTEST2=456\n')
+
         env_vars = s3.get_envfile().as_dict()
-        s3.download_mapping(env_vars.get('S3CONF_MAP'))
+        s3.pull()
 
         assert env_vars['TEST'] == '123'
         assert env_vars['TEST2'] == '456'
-        assert open(file_1).read() == 'file1'
-        assert open(os.path.join(subfolder, 'file3.txt')).read() == 'file3'
-        assert open(os.path.join(subfolder, 'file4.txt')).read() == 'file4'
+        assert open(os.path.join(settings.root_folder, 'file1.txt')).read() == 'file1'
+        assert open(os.path.join(settings.root_folder, 'subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
+        assert open(os.path.join(settings.root_folder, 'subfolder/file3.txt')).read() == 'file3'
 
 
 def test_section_defined_in_settings():
