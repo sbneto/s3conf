@@ -13,7 +13,8 @@ class EnvfilePathNotDefinedUsageError(UsageError):
         error_msg = 'Set the environemnt variable S3CONF or provide a section from an existing config file.'
         try:
             sections_detected = ''
-            for section in config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).sections():
+            settings = config.Settings()
+            for section in config.ConfigFileResolver(settings.config_file).sections():
                 sections_detected += '    {}\n'.format(section)
         except FileNotFoundError:
             pass
