@@ -9,36 +9,43 @@ from .utils import prepare_path
 logger = logging.getLogger(__name__)
 
 
-def _lookup_config_folder(initial_folder='.'):
+CONFIG_NAME = 's3conf'
+
+
+def _lookup_root_folder(initial_folder='.'):
+    # recursion stops
     if not initial_folder:
-        config_folder = os.path.join('.', '.s3conf')
-        logger.debug('Config folder detected: %s', config_folder)
-        return config_folder
+        root_folder = '.'
+        logger.debug('Root folder detected: %s', root_folder)
+        return root_folder
     current_path = os.path.abspath(initial_folder)
-    path_items = set(os.listdir(current_path))
-    if '.s3conf' in path_items:
-        s3conf_folder = os.path.join(current_path, '.s3conf')
-        if os.path.isdir(s3conf_folder):
-            config_folder = os.path.join(current_path, '.s3conf')
-            logger.debug('Config folder detected: %s', config_folder)
-            return config_folder
-    return _lookup_config_folder(os.path.dirname(current_path) if current_path != '/' else None)
-
-
-LOCAL_CONFIG_FOLDER = _lookup_config_folder()
-LOCAL_CONFIG_FILE = os.path.join(LOCAL_CONFIG_FOLDER, 'config')
+    path_items = {entry.name: entry for entry in os.scandir(current_path)}
+    config_file_name = f'{CONFIG_NAME}.ini'
+    if config_file_name in path_items:
+        entry = path_items[config_file_name]
+        if entry.is_file():
+            root_folder = os.path.dirname(entry)
+            logger.debug('Root folder detected: %s', root_folder)
+            return root_folder
+    return _lookup_root_folder(os.path.dirname(current_path) if current_path != '/' else None)
 
 
 class EnvironmentResolver:
     def get(self, item, default=None):
         return os.environ.get(item, default)
 
+    def __str__(self):
+        return f'environemnt'
+
 
 class ConfigFileResolver:
     def __init__(self, config_file, section=None):
-        self.config_file = os.path.expanduser(config_file)
+        self.config_file = config_file
         self.section = section or 'DEFAULT'
         self._config = None
+
+    def __str__(self):
+        return f'{self.config_file}:{self.section}'
 
     @property
     def config(self):
@@ -72,16 +79,26 @@ class ConfigFileResolver:
 
 class Settings:
     def __init__(self, section=None, config_file=None):
-        config_file = config_file or LOCAL_CONFIG_FILE
+        if config_file:
+            self.config_file = os.path.abspath(os.path.expanduser(config_file))
+            self.root_folder = os.path.dirname(self.config_file)
+        else:
+            self.root_folder = _lookup_root_folder()
+            self.config_file = os.path.join(self.root_folder, f'{CONFIG_NAME}.ini')
+        self.cache_dir = os.path.join(self.root_folder, f'.{CONFIG_NAME}')
+        self.default_config_file = os.path.join(self.cache_dir, 'default.ini')
+
         if section:
             self.resolvers = [
-                ConfigFileResolver(config_file, section),
+                ConfigFileResolver(self.config_file, section),
                 EnvironmentResolver(),
+                ConfigFileResolver(self.default_config_file),
             ]
         else:
             self.resolvers = [
                 EnvironmentResolver(),
-                ConfigFileResolver(config_file, section),
+                ConfigFileResolver(self.config_file, section),
+                ConfigFileResolver(self.default_config_file),
             ]
 
     def __getitem__(self, item):
@@ -90,9 +107,8 @@ class Settings:
             if value:
                 break
         else:
-            logger.debug('Entry %s not found', item)
             raise KeyError()
-        logger.debug('Entry %s has value %s', item, value)
+        logger.debug('Entry %s has value %s found in %s', item, value, str(resolver))
         return value
 
     def get(self, item, default=None):
