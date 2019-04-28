@@ -5,7 +5,6 @@ from botocore.exceptions import ClientError
 from io import BytesIO
 
 from .utils import prepare_path, md5s3
-from .config import Settings
 from .files import File
 from . import exceptions
 
@@ -23,8 +22,8 @@ def strip_s3_path(path):
 
 
 class BaseStorage:
-    def __init__(self, settings=None):
-        self._settings = settings or Settings()
+    def __init__(self, settings):
+        self._settings = settings
 
     def read_into_stream(self, file_path, stream=None):
         raise NotImplementedError()

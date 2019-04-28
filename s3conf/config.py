@@ -2,7 +2,7 @@ import os
 import logging
 from configobj import ConfigObj
 
-from .files import File
+from . import exceptions
 from .utils import prepare_path
 
 
@@ -66,9 +66,6 @@ class ConfigFileResolver:
     def set(self, item, value, section=None):
         self.config.setdefault(section or self.section, {})[item] = value
 
-    def edit(self, create=False):
-        File(self.config_file).edit(create=create)
-
     def save(self):
         prepare_path(self.config_file)
         self.config.write()
@@ -100,6 +97,30 @@ class Settings:
                 ConfigFileResolver(self.config_file, section),
                 ConfigFileResolver(self.default_config_file),
             ]
+
+        self.environment_file_path = self._environment_file_path()
+        self.file_mappings = self._unpack_file_mappings()
+
+    def _environment_file_path(self):
+        # resolving environment file path
+        file_name = self.get('S3CONF')
+        if not file_name:
+            logger.error('Environemnt file name is not defined or is empty.')
+            raise exceptions.EnvfilePathNotDefinedError()
+        return file_name
+
+    def path_from_root(self, file_path):
+        return os.path.join(self.root_folder, file_path.lstrip('/'))
+
+    def _unpack_file_mappings(self):
+        files_list = self.get('S3CONF_MAP')
+        files_pairs = files_list.split(';') if files_list else []
+        files_map = {}
+        for file_map in files_pairs:
+            remote_file, _, local_file = file_map.rpartition(':')
+            if remote_file and local_file:
+                files_map[self.path_from_root(local_file)] = remote_file
+        return files_map
 
     def __getitem__(self, item):
         for resolver in self.resolvers:
