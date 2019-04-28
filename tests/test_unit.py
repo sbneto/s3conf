@@ -1,6 +1,7 @@
 import os
 import logging
 import tempfile
+from shutil import rmtree
 
 import pytest
 
@@ -41,77 +42,64 @@ def test_diff():
                                     '+test new\n'
 
 
-def test_upsync_downsync_files():
+def _setup_basic_test(temp_dir):
+    root_path = os.path.join(temp_dir, 'tests/path1/')
+    default_config_file = os.path.join(root_path, f'.{config.CONFIG_NAME}/default.ini')
+    utils.prepare_path(default_config_file)
+    config_file = os.path.join(root_path, f'{config.CONFIG_NAME}.ini')
+    utils.prepare_path(config_file)
+    open(default_config_file, 'w').write("""
+    [DEFAULT]
+        AWS_S3_ENDPOINT_URL=http://localhost:4572
+        AWS_ACCESS_KEY_ID=key
+        AWS_SECRET_ACCESS_KEY=secret
+    """)
+    open(config_file, 'w').write("""
+    [test]  
+        S3CONF=s3://s3conf/test.env
+        S3CONF_MAP=s3://s3conf/files/file1.txt:file1.txt;s3://s3conf/files/subfolder/:subfolder/;
+    """)
+
+    utils.prepare_path(os.path.join(root_path, 'subfolder/'))
+    open(os.path.join(root_path, 'file1.txt'), 'w').write('file1')
+    # creating a large file in order to test amazon's modified md5 e_tag
+    open(os.path.join(root_path, 'subfolder/file2.txt'), 'w').write('file2' * 1024 * 1024 * 2)
+    open(os.path.join(root_path, 'subfolder/file3.txt'), 'w').write('file3')
+
+    os.chdir(root_path)
+
+    return config_file, default_config_file
+
+
+def test_push_pull_files():
     with tempfile.TemporaryDirectory() as temp_dir:
-        config_dir = os.path.join(temp_dir, '.s3conf/')
-        config_file = os.path.join(config_dir, 'config')
-
-        utils.prepare_path(os.path.join(config_dir, 'test/root/subfolder/'))
-        open(os.path.join(config_dir, 'test/root/file1.txt'), 'w').write('file1')
-        # creating a large file in order to test amazon's modified md5 e_tag
-        open(os.path.join(config_dir, 'test/root/subfolder/file2.txt'), 'w').write('file2'*1024*1024*2)
-        open(os.path.join(config_dir, 'test/root/subfolder/file3.txt'), 'w').write('file3')
-
-        utils.prepare_path(config_file)
-        open(config_file, 'w').write("""
-        [test]
-            AWS_S3_ENDPOINT_URL=http://localhost:4572
-            AWS_ACCESS_KEY_ID=key
-            AWS_SECRET_ACCESS_KEY=secret
-            AWS_S3_REGION_NAME=region
-            S3CONF=s3://s3conf/test.env
-        """)
-        local_env_file = files.EnvFile(os.path.join(config_dir, 'test/test.env'))
-        local_env_file.write("""
-        TEST=123
-        TEST2=456
-        S3CONF_MAP=s3://s3conf/file1.txt:file1.txt;s3://s3conf/subfolder/:subfolder/;
-        """.format())
+        config_file, _ = _setup_basic_test(temp_dir)
 
         settings = config.Settings(section='test', config_file=config_file)
         s3 = S3Conf(settings=settings)
-        local_root = os.path.join(config_dir, 'test')
 
-        s3.upsync(local_root, map_files=True, force=True)
-        hashes = s3.downsync(local_root, map_files=True, wipe=True)
+        hashes = s3.push(force=True)
 
         assert hashes == {
-            os.path.join(config_dir, 'test/test.env'): '"7a8b3dd7a1f8160608f506f7489cfa6b"',
-            os.path.join(config_dir, 'test/root/file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
-            os.path.join(config_dir, 'test/root/subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
-            os.path.join(config_dir, 'test/root/subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
+            os.path.join(settings.root_folder, 'file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
+            os.path.join(settings.root_folder, 'subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
+            os.path.join(settings.root_folder, 'subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
-        # editing local env file and uploading
-        local_env_file.write("""
-        TEST=123
-        S3CONF_MAP=s3://s3conf/file1.txt:file1.txt;s3://s3conf/subfolder/:subfolder/;
-        """.format())
-        s3.upsync(local_root, map_files=True)
+        os.remove(os.path.join(settings.root_folder, 'file1.txt'))
+        rmtree(os.path.join(settings.root_folder, 'subfolder'))
 
-        # some more editing and uploading
-        local_env_file.write("""
-        TEST=1234
-        TEST2=4321
-        S3CONF_MAP=s3://s3conf/file1.txt:file1.txt;s3://s3conf/subfolder/:subfolder/;
-        """.format())
-        s3.upsync(local_root, map_files=True)
+        hashes = s3.pull()
 
-        # back to original
-        local_env_file.write("""
-        TEST=123
-        S3CONF_MAP=s3://s3conf/file1.txt:file1.txt;s3://s3conf/subfolder/:subfolder/;
-        """.format())
-        s3.upsync(local_root, map_files=True)
-
-        # some editing happened after downsync was made
-        s3.get_envfile().set('TEST=789')
+        assert hashes == {
+            os.path.join(settings.root_folder, 'file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
+            os.path.join(settings.root_folder, 'subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
+            os.path.join(settings.root_folder, 'subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
+        }
 
         # must fail unless forced
         with pytest.raises(exceptions.LocalCopyOutdated):
             s3.upsync(local_root, map_files=True)
-
-        s3.upsync(local_root, map_files=True, force=True)
 
 
 def test_upload_download_files():
@@ -238,23 +226,17 @@ def test_section_not_defined_in_settings():
 
 def test_existing_lookup_config_folder():
     with tempfile.TemporaryDirectory() as temp_dir:
-        config_file = os.path.join(temp_dir, 'tests/path1/.s3conf/config')
-        utils.prepare_path(config_file)
+        config_file, _ = _setup_basic_test(temp_dir)
         current_path = os.path.join(temp_dir, 'tests/path1/path2/path3/')
         utils.prepare_path(current_path)
-        open(config_file, 'w').write("""
-        [test]
-            TEST=123
-            TEST2=456
-        """)
-        config_folder = config._lookup_config_folder(current_path)
+        config_folder = config._lookup_root_folder(current_path)
         assert config_folder == os.path.dirname(config_file)
 
 
 def test_non_existing_lookup_config_folder():
     with tempfile.TemporaryDirectory() as temp_dir:
-        config_folder = config._lookup_config_folder(temp_dir)
-    assert config_folder == os.path.join('.', '.s3conf')
+        config_folder = config._lookup_root_folder(temp_dir)
+    assert config_folder == '.'
 
 
 def test_set_unset_env_var():
