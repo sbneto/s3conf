@@ -98,29 +98,33 @@ class Settings:
                 ConfigFileResolver(self.default_config_file),
             ]
 
-        self.environment_file_path = self._environment_file_path()
-        self.file_mappings = self._unpack_file_mappings()
+        self._environment_file_path = None
+        self._file_mappings = None
 
-    def _environment_file_path(self):
+    @property
+    def environment_file_path(self):
         # resolving environment file path
-        file_name = self.get('S3CONF')
-        if not file_name:
-            logger.error('Environemnt file name is not defined or is empty.')
-            raise exceptions.EnvfilePathNotDefinedError()
-        return file_name
+        if not self._environment_file_path:
+            file_name = self.get('S3CONF')
+            if not file_name:
+                logger.error('Environemnt file name is not defined or is empty.')
+                raise exceptions.EnvfilePathNotDefinedError()
+        return self._environment_file_path
+
+    @property
+    def file_mappings(self):
+        if not self._file_mappings:
+            files_list = self.get('S3CONF_MAP')
+            files_pairs = files_list.split(';') if files_list else []
+            files_map = {}
+            for file_map in files_pairs:
+                remote_file, _, local_file = file_map.rpartition(':')
+                if remote_file and local_file:
+                    files_map[self.path_from_root(local_file)] = remote_file
+        return self._file_mappings
 
     def path_from_root(self, file_path):
         return os.path.join(self.root_folder, file_path.lstrip('/'))
-
-    def _unpack_file_mappings(self):
-        files_list = self.get('S3CONF_MAP')
-        files_pairs = files_list.split(';') if files_list else []
-        files_map = {}
-        for file_map in files_pairs:
-            remote_file, _, local_file = file_map.rpartition(':')
-            if remote_file and local_file:
-                files_map[self.path_from_root(local_file)] = remote_file
-        return files_map
 
     def __getitem__(self, item):
         for resolver in self.resolvers:

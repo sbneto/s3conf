@@ -7,7 +7,7 @@ import click
 from click.exceptions import UsageError
 import click_log
 
-from . import s3conf, config, exceptions, storages, __version__
+from . import s3conf, config, exceptions, storages, utils, __version__
 
 
 logger = logging.getLogger(__name__)
@@ -293,9 +293,12 @@ def init(section, remote_file):
         raise UsageError('REMOTE_FILE must be a S3-like path. E.g.:\n\n'
                          's3conf init development s3://my-project/development.env')
     logger.debug('Running init command')
-    config_file_path = os.path.join(os.getcwd(), '.s3conf', 'config')
-    config_file = config.ConfigFileResolver(config_file_path, section=section)
+    settings = config.Settings(section=section)
+    config_file = config.ConfigFileResolver(settings.config_file, section=section)
     config_file.set('S3CONF', remote_file)
-    gitignore_file_path = os.path.join(os.getcwd(), '.s3conf', '.gitignore')
     config_file.save()
-    open(gitignore_file_path, 'w').write('*\n!config\n')
+    utils.prepare_path(settings.default_config_file)
+    default_config_file = config.ConfigFileResolver(settings.default_config_file, section='DEFAULT')
+    default_config_file.save()
+    gitignore_file_path = os.path.join(settings.cache_dir, '.gitignore')
+    open(gitignore_file_path, 'w').write('*\n')
