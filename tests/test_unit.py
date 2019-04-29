@@ -20,15 +20,19 @@ def test_prepare_empty_path():
 
 def test_file():
     with tempfile.TemporaryDirectory() as temp_dir:
+        _setup_basic_test(temp_dir)
+        storage = storages.LocalStorage(settings=config.Settings(section='test'))
         test_file = os.path.join(temp_dir, 'test_file.txt')
-        f = files.File(test_file)
+        f = files.File(test_file, storage)
         f.write('test')
         assert f.read() == b'test'
 
 
 def test_diff():
     with tempfile.TemporaryDirectory() as temp_dir:
-        f = files.File(os.path.join(temp_dir, 'test.txt'))
+        _setup_basic_test(temp_dir)
+        storage = storages.LocalStorage(settings=config.Settings(section='test'))
+        f = files.File(os.path.join(temp_dir, 'test.txt'), storage)
         f.write('test1\ntest2\ntest3\n')
         with tempfile.NamedTemporaryFile(mode='w+') as temp_f:
             temp_f.write('test1\ntest2\ntest new\n')
@@ -58,6 +62,8 @@ def _setup_basic_test(temp_dir):
     [test]  
         S3CONF=s3://s3conf/test.env
         S3CONF_MAP=s3://s3conf/files/file1.txt:file1.txt;s3://s3conf/files/subfolder/:subfolder/;
+        TEST=123
+        TEST2=456
     """)
 
     utils.prepare_path(os.path.join(root_path, 'subfolder/'))
@@ -75,7 +81,7 @@ def test_push_pull_files():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file, _ = _setup_basic_test(temp_dir)
 
-        settings = config.Settings(section='test', config_file=config_file)
+        settings = config.Settings(section='test')
         s3 = S3Conf(settings=settings)
 
         hashes = s3.push(force=True)
@@ -106,7 +112,7 @@ def test_upload_download_files():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file, _ = _setup_basic_test(temp_dir)
 
-        settings = config.Settings(section='test', config_file=config_file)
+        settings = config.Settings(section='test')
         s3 = S3Conf(settings=settings)
 
         s3.upload(settings.root_folder, 's3://tests/remote/')
@@ -137,7 +143,7 @@ def test_no_file_defined():
 def test_setup_environment():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file, _ = _setup_basic_test(temp_dir)
-        settings = config.Settings(section='test', config_file=config_file)
+        settings = config.Settings(section='test')
         s3 = S3Conf(settings=settings)
 
         files.File('s3://s3conf/test.env', storage=s3.storage).write('TEST=123\nTEST2=456\n')
@@ -154,13 +160,7 @@ def test_setup_environment():
 
 def test_section_defined_in_settings():
     with tempfile.TemporaryDirectory() as temp_dir:
-        config_file = os.path.join(temp_dir, '.s3conf/config')
-        utils.prepare_path(config_file)
-        open(config_file, 'w').write("""
-        [test]
-            TEST=123
-            TEST2=456
-        """)
+        config_file, _ = _setup_basic_test(temp_dir)
         os.environ['TEST'] = '321'
         os.environ['TEST2'] = '654'
         os.environ['TEST3'] = '987'
@@ -172,16 +172,11 @@ def test_section_defined_in_settings():
 
 def test_section_not_defined_in_settings():
     with tempfile.TemporaryDirectory() as temp_dir:
-        config_file = os.path.join(temp_dir, '.s3conf/config')
-        utils.prepare_path(config_file)
-        open(config_file, 'w').write("""
-        [test]
-            TEST=123
-            TEST2=456
-        """)
+        config_file, _ = _setup_basic_test(temp_dir)
         os.environ['TEST'] = '321'
         os.environ['TEST2'] = '654'
         os.environ['TEST3'] = '987'
+        os.environ['S3CONF'] = 's3://test/in_environment.txt'
         settings = config.Settings(config_file=config_file)
         assert settings['TEST'] == '321'
         assert settings['TEST2'] == '654'
