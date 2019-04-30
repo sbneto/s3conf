@@ -36,9 +36,9 @@ def phusion_dump(environment, path):
 def expand_path(path, path_target):
     mapping = []
     if path.is_dir():
-        for root, dirs, files in os.walk(path):
+        for root, dirs, dir_files in os.walk(path):
             root_dir = Path(root)
-            for file in files:
+            for file in dir_files:
                 file_source = Path(root).joinpath(file)
                 file_target = os.path.join(path_target, root_dir.relative_to(path).joinpath(file))
                 mapping.append((file_source, file_target))
