@@ -13,21 +13,22 @@ CONFIG_NAME = 's3conf'
 
 
 def _lookup_root_folder(initial_folder='.'):
+    initial_folder = Path(initial_folder)
     # recursion stops
-    if not initial_folder:
-        root_folder = '.'
+    if not initial_folder or initial_folder == Path(initial_folder.anchor):
+        root_folder = Path('.')
         logger.debug('Root folder detected: %s', root_folder)
         return root_folder
-    current_path = os.path.abspath(initial_folder)
+    current_path = initial_folder.resolve()
     path_items = {entry.name: entry for entry in os.scandir(current_path)}
     config_file_name = f'{CONFIG_NAME}.ini'
     if config_file_name in path_items:
         entry = path_items[config_file_name]
         if entry.is_file():
-            root_folder = os.path.dirname(entry)
+            root_folder = Path(entry).parent
             logger.debug('Root folder detected: %s', root_folder)
             return root_folder
-    return _lookup_root_folder(os.path.dirname(current_path) if current_path != '/' else None)
+    return _lookup_root_folder(current_path.parent)
 
 
 class EnvironmentResolver:
@@ -73,13 +74,30 @@ class ConfigFileResolver:
         return list(self.config)
 
 
+def list_all_files(path):
+    if path.is_dir():
+        mapping = [Path(root).joinpath(name).resolve() for root, _, names in os.walk(path) for name in names]
+    else:
+        mapping = [path]
+    return mapping
+
+
+def expand_mapping(local_path, remote_path):
+    local_files = list_all_files(local_path)
+    if local_path.is_file():
+        local_path = local_path.parent
+        remote_path = os.path.dirname(remote_path)
+    mapping = {f: os.path.join(remote_path, f.relative_to(local_path)) for f in local_files}
+    return mapping
+
+
 class Settings:
     def __init__(self, section=None, config_file=None):
         if config_file:
             self.config_file = Path(config_file).resolve()
             self.root_folder = Path(self.config_file).parent
         else:
-            self.root_folder = Path(_lookup_root_folder()).resolve()
+            self.root_folder = _lookup_root_folder().resolve()
             self.config_file = self.root_folder.joinpath(f'{CONFIG_NAME}.ini')
         self.cache_dir = self.root_folder.joinpath(f'.{CONFIG_NAME}')
         self.default_config_file = self.cache_dir.joinpath('default.ini')
@@ -139,8 +157,9 @@ class Settings:
             file_mappings[relative_local_path] = remote_path
         return ';'.join(f'{remote_path}:{local_path}' for local_path, remote_path in file_mappings.items())
 
-    def path_from_root(self, file_path):
-        return os.path.join(self.root_folder, file_path.lstrip('/'))
+    def create_mapping(self, local_path):
+        suffix = local_path.relative_to(self.root_folder)
+        return expand_mapping(local_path, os.path.join(os.path.dirname(self.environment_file_path), 'files', suffix))
 
     def __getitem__(self, item):
         for resolver in self.resolvers:
