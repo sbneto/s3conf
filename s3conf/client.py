@@ -118,6 +118,18 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
         raise UsageError('The file {} does not exist. Try "-c" option if you want to create it.'.format(str(e)))
 
 
+@main.command('add')
+@click.argument('section', cls=SectionArgument)
+def add(section):
+    """
+
+    """
+    try:
+        settings = config.Settings(section=section)
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
+
+
 @main.command('push')
 @click.argument('section', cls=SectionArgument)
 @click.option('--force',
@@ -297,7 +309,7 @@ def init(section, remote_file):
     config_file = config.ConfigFileResolver(settings.config_file, section=section)
     config_file.set('S3CONF', remote_file)
     config_file.save()
-    utils.prepare_path(settings.default_config_file)
+    settings.cache_dir.mkdir(parents=True, exist_ok=True)
     default_config_file = config.ConfigFileResolver(settings.default_config_file, section='DEFAULT')
     default_config_file.save()
     gitignore_file_path = os.path.join(settings.cache_dir, '.gitignore')

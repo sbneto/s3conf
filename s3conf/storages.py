@@ -1,10 +1,12 @@
 import os
 import logging
+from io import BytesIO
+from pathlib import Path
+
 import boto3
 from botocore.exceptions import ClientError
-from io import BytesIO
 
-from .utils import prepare_path, md5s3
+from .utils import md5s3
 from .files import File
 from . import exceptions
 
@@ -109,13 +111,8 @@ class S3Storage(BaseStorage):
 
 
 class LocalStorage(BaseStorage):
-    def _validate_path(self, path):
-        if path.startswith('s3://'):
-            raise ValueError('LocalStorage can not process S3 paths.')
-
     def read_into_stream(self, file_name, stream=None):
         try:
-            self._validate_path(file_name)
             stream = stream or BytesIO()
             with open(file_name, 'rb') as f:
                 stream.write(f.read())
@@ -125,12 +122,10 @@ class LocalStorage(BaseStorage):
             raise exceptions.FileDoesNotExist(file_name)
 
     def write(self, f, file_name):
-        self._validate_path(file_name)
-        prepare_path(file_name)
+        Path(file_name).parent.mkdir(parents=True, exist_ok=True)
         open(file_name, 'wb').write(f.read())
 
     def list(self, path):
-        self._validate_path(path)
         if os.path.isdir(path):
             for root, dirs, files in os.walk(path):
                 for file in files:

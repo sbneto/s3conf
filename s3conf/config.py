@@ -1,9 +1,9 @@
 import os
 import logging
+import pathlib
 from configobj import ConfigObj
 
 from . import exceptions
-from .utils import prepare_path
 
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class ConfigFileResolver:
     @property
     def config(self):
         if not self._config:
-            self._config = ConfigObj(self.config_file)
+            self._config = ConfigObj(str(self.config_file))
         return self._config
 
     @config.setter
@@ -67,7 +67,6 @@ class ConfigFileResolver:
         self.config.setdefault(section or self.section, {})[item] = value
 
     def save(self):
-        prepare_path(self.config_file)
         self.config.write()
 
     def sections(self):
@@ -77,34 +76,35 @@ class ConfigFileResolver:
 class Settings:
     def __init__(self, section=None, config_file=None):
         if config_file:
-            self.config_file = os.path.abspath(os.path.expanduser(config_file))
-            self.root_folder = os.path.dirname(self.config_file)
+            self.config_file = pathlib.Path(config_file).resolve()
+            self.root_folder = pathlib.Path(self.config_file).parent
         else:
-            self.root_folder = _lookup_root_folder()
-            self.config_file = os.path.join(self.root_folder, f'{CONFIG_NAME}.ini')
-        self.cache_dir = os.path.join(self.root_folder, f'.{CONFIG_NAME}')
-        self.default_config_file = os.path.join(self.cache_dir, 'default.ini')
+            self.root_folder = pathlib.Path(_lookup_root_folder()).resolve()
+            self.config_file = self.root_folder.joinpath(f'{CONFIG_NAME}.ini')
+        self.cache_dir = self.root_folder.joinpath(f'.{CONFIG_NAME}')
+        self.default_config_file = self.cache_dir.joinpath('default.ini')
+        self.section = section
         logger.debug('Settings paths:\n%s\n%s\n%s\n%s',
                      self.root_folder,
                      self.config_file,
                      self.cache_dir,
                      self.default_config_file)
 
-        if section:
+        if self.section:
             self.resolvers = [
-                ConfigFileResolver(self.config_file, section),
+                ConfigFileResolver(self.config_file, self.section),
                 EnvironmentResolver(),
                 ConfigFileResolver(self.default_config_file),
             ]
         else:
             self.resolvers = [
                 EnvironmentResolver(),
-                ConfigFileResolver(self.config_file, section),
+                ConfigFileResolver(self.config_file, self.section),
                 ConfigFileResolver(self.default_config_file),
             ]
 
         self._environment_file_path = None
-        self._file_mappings = None
+        self._file_mappings = {}
 
     @property
     def environment_file_path(self):
@@ -121,13 +121,23 @@ class Settings:
         if not self._file_mappings:
             files_list = self.get('S3CONF_MAP')
             files_pairs = files_list.split(';') if files_list else []
-            files_map = {}
             for file_map in files_pairs:
-                remote_file, _, local_file = file_map.rpartition(':')
-                if remote_file and local_file:
-                    files_map[self.path_from_root(local_file)] = remote_file
-            self._file_mappings = file_map
+                remote_path, _, local_path = file_map.rpartition(':')
+                if remote_path and local_path:
+                    self.add_mapping(remote_path, local_path)
         return self._file_mappings
+
+    def add_mapping(self, remote_path, local_path):
+        local_path = pathlib.Path(local_path)
+        local_path = self.root_folder.joinpath(local_path.relative_to(local_path.root))
+        self._file_mappings[local_path] = remote_path
+
+    def serialize_mappings(self):
+        file_mappings = {}
+        for local_path, remote_path in self.file_mappings.items():
+            relative_local_path = local_path.relative_to(self.root_folder)
+            file_mappings[relative_local_path] = remote_path
+        return ';'.join(f'{remote_path}:{local_path}' for local_path, remote_path in file_mappings.items())
 
     def path_from_root(self, file_path):
         return os.path.join(self.root_folder, file_path.lstrip('/'))

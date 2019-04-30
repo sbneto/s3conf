@@ -2,6 +2,7 @@ import os
 import logging
 import tempfile
 from shutil import rmtree
+from pathlib import Path
 
 import pytest
 
@@ -14,8 +15,35 @@ logging.getLogger('botocore').setLevel(logging.ERROR)
 logging.getLogger('s3transfer').setLevel(logging.ERROR)
 
 
-def test_prepare_empty_path():
-    utils.prepare_path('')
+def _setup_basic_test(temp_dir):
+    root_path = Path(temp_dir).joinpath('tests/path1/')
+    default_config_file = root_path.joinpath(f'.{config.CONFIG_NAME}/default.ini')
+    default_config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file = root_path.joinpath(f'{config.CONFIG_NAME}.ini')
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    open(default_config_file, 'w').write(
+        '[DEFAULT]\n'
+        'AWS_S3_ENDPOINT_URL=http://localhost:4572\n'
+        'AWS_ACCESS_KEY_ID=key\n'
+        'AWS_SECRET_ACCESS_KEY=secret\n'
+    )
+    open(config_file, 'w').write(
+        '[test]\n'
+        'S3CONF=s3://s3conf/test.env\n'
+        'S3CONF_MAP=s3://s3conf/files/file1.txt:file1.txt;s3://s3conf/files/subfolder/:subfolder/;\n'
+        'TEST=123\n'
+        'TEST2=456\n'
+    )
+
+    root_path.joinpath('subfolder/').mkdir(parents=True, exist_ok=True)
+    open(root_path.joinpath('file1.txt'), 'w').write('file1')
+    # creating a large file in order to test amazon's modified md5 e_tag
+    open(root_path.joinpath('subfolder/file2.txt'), 'w').write('file2' * 1024 * 1024 * 2)
+    open(root_path.joinpath('subfolder/file3.txt'), 'w').write('file3')
+
+    os.chdir(root_path)
+
+    return config_file, default_config_file
 
 
 def test_file():
@@ -26,6 +54,14 @@ def test_file():
         f = files.File(test_file, storage)
         f.write('test')
         assert f.read() == b'test'
+
+
+def test_add():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        _setup_basic_test(temp_dir)
+        settings = config.Settings(section='test')
+        mapping = settings.serialize_mappings()
+        mapping
 
 
 def test_diff():
@@ -46,37 +82,6 @@ def test_diff():
                                     '+test new\n'
 
 
-def _setup_basic_test(temp_dir):
-    root_path = os.path.join(temp_dir, 'tests/path1/')
-    default_config_file = os.path.join(root_path, f'.{config.CONFIG_NAME}/default.ini')
-    utils.prepare_path(default_config_file)
-    config_file = os.path.join(root_path, f'{config.CONFIG_NAME}.ini')
-    utils.prepare_path(config_file)
-    open(default_config_file, 'w').write("""
-    [DEFAULT]
-        AWS_S3_ENDPOINT_URL=http://localhost:4572
-        AWS_ACCESS_KEY_ID=key
-        AWS_SECRET_ACCESS_KEY=secret
-    """)
-    open(config_file, 'w').write("""
-    [test]  
-        S3CONF=s3://s3conf/test.env
-        S3CONF_MAP=s3://s3conf/files/file1.txt:file1.txt;s3://s3conf/files/subfolder/:subfolder/;
-        TEST=123
-        TEST2=456
-    """)
-
-    utils.prepare_path(os.path.join(root_path, 'subfolder/'))
-    open(os.path.join(root_path, 'file1.txt'), 'w').write('file1')
-    # creating a large file in order to test amazon's modified md5 e_tag
-    open(os.path.join(root_path, 'subfolder/file2.txt'), 'w').write('file2' * 1024 * 1024 * 2)
-    open(os.path.join(root_path, 'subfolder/file3.txt'), 'w').write('file3')
-
-    os.chdir(root_path)
-
-    return config_file, default_config_file
-
-
 def test_push_pull_files():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file, _ = _setup_basic_test(temp_dir)
@@ -87,9 +92,9 @@ def test_push_pull_files():
         hashes = s3.push(force=True)
 
         assert hashes == {
-            os.path.join(settings.root_folder, 'file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
-            os.path.join(settings.root_folder, 'subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
-            os.path.join(settings.root_folder, 'subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
+            settings.root_folder.joinpath('file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
+            settings.root_folder.joinpath('subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
+            settings.root_folder.joinpath('subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
         os.remove(os.path.join(settings.root_folder, 'file1.txt'))
@@ -98,9 +103,9 @@ def test_push_pull_files():
         hashes = s3.pull()
 
         assert hashes == {
-            os.path.join(settings.root_folder, 'file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
-            os.path.join(settings.root_folder, 'subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
-            os.path.join(settings.root_folder, 'subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
+            settings.root_folder.joinpath('file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
+            settings.root_folder.joinpath('subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
+            settings.root_folder.joinpath('subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
         # # must fail unless forced
@@ -125,8 +130,8 @@ def test_upload_download_files():
 
 def test_no_file_defined():
     with pytest.raises(exceptions.EnvfilePathNotDefinedError), tempfile.TemporaryDirectory() as temp_dir:
-        config_file = os.path.join(temp_dir, '.s3conf/config')
-        utils.prepare_path(config_file)
+        config_file = Path(temp_dir).joinpath('.s3conf/config')
+        config_file.parent.mkdir(parents=True, exist_ok=True)
         open(config_file, 'w').write("""
         [test]
             AWS_S3_ENDPOINT_URL=http://localhost:4572
@@ -186,8 +191,8 @@ def test_section_not_defined_in_settings():
 def test_existing_lookup_config_folder():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file, _ = _setup_basic_test(temp_dir)
-        current_path = os.path.join(temp_dir, 'tests/path1/path2/path3/')
-        utils.prepare_path(current_path)
+        current_path = Path(temp_dir).joinpath('tests/path1/path2/path3/')
+        current_path.mkdir(parents=True, exist_ok=True)
         config_folder = config._lookup_root_folder(current_path)
         assert config_folder == os.path.dirname(config_file)
 
@@ -200,8 +205,8 @@ def test_non_existing_lookup_config_folder():
 
 def test_set_unset_env_var():
     with tempfile.TemporaryDirectory() as temp_dir:
-        config_file = os.path.join(temp_dir, '.s3conf/config')
-        utils.prepare_path(config_file)
+        config_file = Path(temp_dir).joinpath('.s3conf/config')
+        config_file.parent.mkdir(parents=True, exist_ok=True)
         open(config_file, 'w').write("""
         [test]
             AWS_S3_ENDPOINT_URL=http://localhost:4572
@@ -224,4 +229,3 @@ def test_set_unset_env_var():
 
         env_vars = s3.get_envfile().as_dict()
         assert 'TEST' not in env_vars
-

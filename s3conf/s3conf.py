@@ -2,8 +2,8 @@ import os
 import codecs
 import logging
 import json
+from pathlib import Path
 
-from .utils import prepare_path
 from . import exceptions, files, storages, config
 
 logger = logging.getLogger(__name__)
@@ -26,20 +26,21 @@ def parse_dotenv(data):
 
 
 def phusion_dump(environment, path):
-    prepare_path(path if path.endswith('/') else path + '/')
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
     for k, v in environment.items():
-        with open(os.path.join(path, k), 'w') as f:
+        with open(path.joinpath(k), 'w') as f:
             f.write(v + '\n')
 
 
 def expand_path(path, path_target):
     mapping = []
-    if os.path.isdir(path):
+    if path.is_dir():
         for root, dirs, files in os.walk(path):
+            root_dir = Path(root)
             for file in files:
-                file_source = os.path.join(root, file)
-                file_target = os.path.join(path_target,
-                                           storages.strip_prefix(os.path.join(root, file), path).lstrip('/'))
+                file_source = Path(root).joinpath(file)
+                file_target = os.path.join(path_target, root_dir.relative_to(path).joinpath(file))
                 mapping.append((file_source, file_target))
     else:
         mapping.append((path, path_target))
@@ -82,7 +83,7 @@ class S3Conf:
         for local_path, remote_path in self.settings.file_mappings.items():
             hashes.update(self.upload(local_path, remote_path))
         md5_hash_file_name = os.path.join(self.settings.cache_dir, 'md5')
-        json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
+        json.dump({str(k): v for k, v in hashes.items()}, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
     def pull(self):
@@ -90,18 +91,19 @@ class S3Conf:
         for local_path, remote_path in self.settings.file_mappings.items():
             hashes.update(self.download(remote_path, local_path))
         md5_hash_file_name = os.path.join(self.settings.cache_dir, 'md5')
-        json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
+        json.dump({str(k): v for k, v in hashes.items()}, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
     def download(self, path, path_target, force=False):
         hashes = {}
         logger.info('Downloading %s to %s', path, path_target)
+        path_target = Path(path_target)
         for md5hash, file_path in self.storage.list(path):
             if path.endswith('/') or not path:
-                target_name = os.path.join(path_target, file_path)
+                target_name = path_target.joinpath(file_path)
             else:
                 target_name = path_target
-            prepare_path(target_name)
+            target_name.parent.mkdir(parents=True, exist_ok=True)
             target_file = storages.LocalStorage(self.settings).open(target_name)
             existing_md5 = target_file.md5() if target_file.exists() and not force else None
             if not existing_md5 or existing_md5 != md5hash:
