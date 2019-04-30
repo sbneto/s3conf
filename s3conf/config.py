@@ -12,22 +12,20 @@ logger = logging.getLogger(__name__)
 CONFIG_NAME = 's3conf'
 
 
-def _lookup_root_folder(initial_folder='.'):
-    initial_folder = Path(initial_folder)
+def _lookup_root_folder(current_path='.'):
+    current_path = Path(current_path).resolve()
     # recursion stops
-    if not initial_folder or initial_folder == Path(initial_folder.anchor):
+    if not current_path or current_path == Path(current_path.anchor):
         root_folder = Path('.')
         logger.debug('Root folder detected: %s', root_folder)
         return root_folder
-    current_path = initial_folder.resolve()
     path_items = {entry.name: entry for entry in os.scandir(current_path)}
     config_file_name = f'{CONFIG_NAME}.ini'
     if config_file_name in path_items:
         entry = path_items[config_file_name]
         if entry.is_file():
-            root_folder = Path(entry).parent
-            logger.debug('Root folder detected: %s', root_folder)
-            return root_folder
+            logger.debug('Root folder detected: %s', current_path)
+            return current_path
     return _lookup_root_folder(current_path.parent)
 
 
@@ -122,7 +120,7 @@ class Settings:
             ]
 
         self._environment_file_path = None
-        self._file_mappings = {}
+        self._file_mappings = None
 
     @property
     def environment_file_path(self):
@@ -136,7 +134,8 @@ class Settings:
 
     @property
     def file_mappings(self):
-        if not self._file_mappings:
+        if self._file_mappings is None:
+            self._file_mappings = {}
             files_list = self.get('S3CONF_MAP')
             files_pairs = files_list.split(';') if files_list else []
             for file_map in files_pairs:
@@ -148,7 +147,7 @@ class Settings:
     def add_mapping(self, remote_path, local_path):
         local_path = Path(local_path)
         local_path = self.root_folder.joinpath(local_path.relative_to(local_path.root))
-        self._file_mappings[local_path] = remote_path
+        self.file_mappings[local_path] = remote_path
 
     def serialize_mappings(self):
         file_mappings = {}
