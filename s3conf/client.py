@@ -2,12 +2,13 @@ import logging
 import subprocess
 import shlex
 import os
+from pathlib import Path
 
 import click
 from click.exceptions import UsageError
 import click_log
 
-from . import s3conf, config, exceptions, storages, utils, __version__
+from . import s3conf, config, exceptions, storages, __version__
 
 
 logger = logging.getLogger(__name__)
@@ -120,12 +121,19 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
 
 @main.command('add')
 @click.argument('section', cls=SectionArgument)
-def add(section):
+@click.argument('local_path')
+def add(section, local_path):
     """
 
     """
     try:
         settings = config.Settings(section=section)
+        local_path = Path(local_path).resolve().relative_to(settings.root_folder)
+        remote_path = os.path.join(os.path.dirname(settings.environment_file_path), 'files', local_path)
+        settings.add_mapping(remote_path, local_path)
+        config_file = config.ConfigFileResolver(settings.config_file, section=section)
+        config_file.set('S3CONF_MAP', settings.serialize_mappings())
+        config_file.save()
     except exceptions.EnvfilePathNotDefinedError:
         raise exceptions.EnvfilePathNotDefinedUsageError()
 
