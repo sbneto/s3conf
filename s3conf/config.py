@@ -1,7 +1,7 @@
 import os
 import logging
-import pathlib
 from configobj import ConfigObj
+from pathlib import Path
 
 from . import exceptions
 
@@ -76,10 +76,10 @@ class ConfigFileResolver:
 class Settings:
     def __init__(self, section=None, config_file=None):
         if config_file:
-            self.config_file = pathlib.Path(config_file).resolve()
-            self.root_folder = pathlib.Path(self.config_file).parent
+            self.config_file = Path(config_file).resolve()
+            self.root_folder = Path(self.config_file).parent
         else:
-            self.root_folder = pathlib.Path(_lookup_root_folder()).resolve()
+            self.root_folder = Path(_lookup_root_folder()).resolve()
             self.config_file = self.root_folder.joinpath(f'{CONFIG_NAME}.ini')
         self.cache_dir = self.root_folder.joinpath(f'.{CONFIG_NAME}')
         self.default_config_file = self.cache_dir.joinpath('default.ini')
@@ -128,7 +128,7 @@ class Settings:
         return self._file_mappings
 
     def add_mapping(self, remote_path, local_path):
-        local_path = pathlib.Path(local_path)
+        local_path = Path(local_path)
         local_path = self.root_folder.joinpath(local_path.relative_to(local_path.root))
         self._file_mappings[local_path] = remote_path
 
