@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from s3conf import exceptions, utils
+from s3conf import exceptions
 from s3conf.s3conf import S3Conf
 from s3conf import files, config, storages
 
