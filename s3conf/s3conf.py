@@ -83,7 +83,8 @@ class S3Conf:
     def download(self, remote_path, local_path, force=False):
         hashes = {}
         logger.info('Downloading %s to %s', remote_path, local_path)
-        for md5hash, file_path in self.storage.list(remote_path):
+        remote_files = {file_path: md5hash for md5hash, file_path in self.storage.list(remote_path)}
+        for file_path, md5hash in remote_files.items():
             if remote_path.endswith('/') or not remote_path:
                 target_name = local_path.joinpath(file_path)
             else:

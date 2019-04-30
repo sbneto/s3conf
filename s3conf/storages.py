@@ -99,10 +99,12 @@ class S3Storage(BaseStorage):
         logger.debug('Listing %s', path)
         bucket_name, path = strip_s3_path(path)
         bucket = self.s3.Bucket(bucket_name)
+        path = path.rstrip('/')
         try:
             for obj in bucket.objects.filter(Prefix=path):
-                if not obj.key.endswith('/'):
-                    yield obj.e_tag, strip_prefix(obj.key, path)
+                relative_path = strip_prefix(obj.key, path)
+                if relative_path.startswith('/') or not relative_path:
+                    yield obj.e_tag, relative_path
         except ClientError as e:
             if e.response['Error']['Code'] == 'NoSuchBucket':
                 logger.warning('Bucket does not exist, list() returning empty.')

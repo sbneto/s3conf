@@ -29,7 +29,7 @@ def _setup_basic_test(temp_dir):
     open(config_file, 'w').write(
         '[test]\n'
         'S3CONF=s3://s3conf/test.env\n'
-        'S3CONF_MAP=s3://s3conf/files/file1.txt:file1.txt;s3://s3conf/files/subfolder/:subfolder/;\n'
+        'S3CONF_MAP=s3://s3conf/files/file1.txt:file1.txt;s3://s3conf/files/subfolder:subfolder\n'
         'TEST=123\n'
         'TEST2=456\n'
     )
@@ -75,7 +75,7 @@ def test_add():
         _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
         mapping = settings.serialize_mappings()
-        mapping
+        raise NotImplementedError()
 
 
 def test_diff():
