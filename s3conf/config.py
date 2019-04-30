@@ -84,6 +84,11 @@ class Settings:
             self.config_file = os.path.join(self.root_folder, f'{CONFIG_NAME}.ini')
         self.cache_dir = os.path.join(self.root_folder, f'.{CONFIG_NAME}')
         self.default_config_file = os.path.join(self.cache_dir, 'default.ini')
+        logger.debug('Settings paths:\n%s\n%s\n%s\n%s',
+                     self.root_folder,
+                     self.config_file,
+                     self.cache_dir,
+                     self.default_config_file)
 
         if section:
             self.resolvers = [
@@ -105,8 +110,8 @@ class Settings:
     def environment_file_path(self):
         # resolving environment file path
         if not self._environment_file_path:
-            file_name = self.get('S3CONF')
-            if not file_name:
+            self._environment_file_path = self.get('S3CONF')
+            if not self._environment_file_path:
                 logger.error('Environemnt file name is not defined or is empty.')
                 raise exceptions.EnvfilePathNotDefinedError()
         return self._environment_file_path
@@ -121,6 +126,7 @@ class Settings:
                 remote_file, _, local_file = file_map.rpartition(':')
                 if remote_file and local_file:
                     files_map[self.path_from_root(local_file)] = remote_file
+            self._file_mappings = file_map
         return self._file_mappings
 
     def path_from_root(self, file_path):
