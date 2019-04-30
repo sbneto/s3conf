@@ -33,20 +33,6 @@ def phusion_dump(environment, path):
             f.write(v + '\n')
 
 
-def expand_path(path, path_target):
-    mapping = []
-    if path.is_dir():
-        for root, dirs, dir_files in os.walk(path):
-            root_dir = Path(root)
-            for file in dir_files:
-                file_source = Path(root).joinpath(file)
-                file_target = os.path.join(path_target, root_dir.relative_to(path).joinpath(file))
-                mapping.append((file_source, file_target))
-    else:
-        mapping.append((path, path_target))
-    return mapping
-
-
 def raise_out_of_sync(local_file, remote_file):
     raise exceptions.LocalCopyOutdated(
         'Upsync failed, target file probably changed since last downsync.\n'
@@ -65,12 +51,12 @@ class S3Conf:
 
     def push(self, force=False):
         if not force:
-            md5_hash_file_name = os.path.join(self.settings.cache_dir, 'md5')
+            md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
             hashes = json.load(open(md5_hash_file_name))
 
         if not force:
             for local_path, remote_path in self.settings.file_mappings.items():
-                mapping = expand_path(local_path, remote_path)
+                mapping = config.expand_mapping(local_path, remote_path)
                 for local_file, remote_file in mapping:
                     current_hash = hashes.get(local_file)
                     if current_hash:
@@ -82,7 +68,7 @@ class S3Conf:
         hashes = {}
         for local_path, remote_path in self.settings.file_mappings.items():
             hashes.update(self.upload(local_path, remote_path))
-        md5_hash_file_name = os.path.join(self.settings.cache_dir, 'md5')
+        md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
         json.dump({str(k): v for k, v in hashes.items()}, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
@@ -90,24 +76,23 @@ class S3Conf:
         hashes = {}
         for local_path, remote_path in self.settings.file_mappings.items():
             hashes.update(self.download(remote_path, local_path))
-        md5_hash_file_name = os.path.join(self.settings.cache_dir, 'md5')
+        md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
         json.dump({str(k): v for k, v in hashes.items()}, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
-    def download(self, path, path_target, force=False):
+    def download(self, remote_path, local_path, force=False):
         hashes = {}
-        logger.info('Downloading %s to %s', path, path_target)
-        path_target = Path(path_target)
-        for md5hash, file_path in self.storage.list(path):
-            if path.endswith('/') or not path:
-                target_name = path_target.joinpath(file_path)
+        logger.info('Downloading %s to %s', remote_path, local_path)
+        for md5hash, file_path in self.storage.list(remote_path):
+            if remote_path.endswith('/') or not remote_path:
+                target_name = local_path.joinpath(file_path)
             else:
-                target_name = path_target
+                target_name = local_path
             target_name.parent.mkdir(parents=True, exist_ok=True)
             target_file = storages.LocalStorage(self.settings).open(target_name)
             existing_md5 = target_file.md5() if target_file.exists() and not force else None
             if not existing_md5 or existing_md5 != md5hash:
-                source_name = os.path.join(path, file_path).rstrip('/')
+                source_name = os.path.join(remote_path, file_path).rstrip('/')
                 logger.debug('Transferring file %s to %s', source_name, target_name)
                 with open(target_name, 'wb') as f:
                     # join might add a trailing slash, but we know it is a file, so we remove it
@@ -115,11 +100,11 @@ class S3Conf:
             hashes[target_name] = md5hash
         return hashes
 
-    def upload(self, path, path_target):
-        logger.info('Uploading %s to %s', path, path_target)
+    def upload(self, local_path, remote_path):
+        logger.info('Uploading %s to %s', local_path, remote_path)
         hashes = {}
-        mapping = expand_path(path, path_target)
-        for file_source, file_target in mapping:
+        mapping = config.expand_mapping(local_path, remote_path)
+        for file_source, file_target in mapping.items():
             file = self.storage.open(file_target)
             file.write(open(file_source, 'rb'))
             hashes[file_source] = file.md5()

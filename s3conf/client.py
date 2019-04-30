@@ -320,5 +320,5 @@ def init(section, remote_file):
     settings.cache_dir.mkdir(parents=True, exist_ok=True)
     default_config_file = config.ConfigFileResolver(settings.default_config_file, section='DEFAULT')
     default_config_file.save()
-    gitignore_file_path = os.path.join(settings.cache_dir, '.gitignore')
+    gitignore_file_path = settings.cache_dir.joinpath('.gitignore')
     open(gitignore_file_path, 'w').write('*\n')

@@ -7,8 +7,7 @@ from pathlib import Path
 import pytest
 
 from s3conf import exceptions
-from s3conf.s3conf import S3Conf
-from s3conf import files, config, storages
+from s3conf import files, config, storages, s3conf
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
 logging.getLogger('botocore').setLevel(logging.ERROR)
@@ -46,11 +45,26 @@ def _setup_basic_test(temp_dir):
     return config_file, default_config_file
 
 
+def test_expand_mapping():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        _setup_basic_test(temp_dir)
+        settings = config.Settings(section='test')
+        mapping = settings.create_mapping(settings.config_file)
+        assert mapping == {
+            settings.config_file: 's3://s3conf/files/s3conf.ini',
+        }
+        mapping = settings.create_mapping(settings.root_folder.joinpath('subfolder/'))
+        assert mapping == {
+            settings.root_folder.joinpath('subfolder/file2.txt'): 's3://s3conf/files/subfolder/file2.txt',
+            settings.root_folder.joinpath('subfolder/file3.txt'): 's3://s3conf/files/subfolder/file3.txt',
+        }
+
+
 def test_file():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         storage = storages.LocalStorage(settings=config.Settings(section='test'))
-        test_file = os.path.join(temp_dir, 'test_file.txt')
+        test_file = Path(temp_dir).joinpath('test_file.txt')
         f = files.File(test_file, storage)
         f.write('test')
         assert f.read() == b'test'
@@ -68,7 +82,7 @@ def test_diff():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         storage = storages.LocalStorage(settings=config.Settings(section='test'))
-        f = files.File(os.path.join(temp_dir, 'test.txt'), storage)
+        f = files.File(Path(temp_dir).joinpath('test.txt'), storage)
         f.write('test1\ntest2\ntest3\n')
         with tempfile.NamedTemporaryFile(mode='w+') as temp_f:
             temp_f.write('test1\ntest2\ntest new\n')
@@ -87,7 +101,7 @@ def test_push_pull_files():
         config_file, _ = _setup_basic_test(temp_dir)
 
         settings = config.Settings(section='test')
-        s3 = S3Conf(settings=settings)
+        s3 = s3conf.S3Conf(settings=settings)
 
         hashes = s3.push(force=True)
 
@@ -97,8 +111,8 @@ def test_push_pull_files():
             settings.root_folder.joinpath('subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
-        os.remove(os.path.join(settings.root_folder, 'file1.txt'))
-        rmtree(os.path.join(settings.root_folder, 'subfolder'))
+        os.remove(Path(settings.root_folder).joinpath('file1.txt'))
+        rmtree(Path(settings.root_folder).joinpath('subfolder'))
 
         hashes = s3.pull()
 
@@ -118,14 +132,14 @@ def test_upload_download_files():
         config_file, _ = _setup_basic_test(temp_dir)
 
         settings = config.Settings(section='test')
-        s3 = S3Conf(settings=settings)
+        s3 = s3conf.S3Conf(settings=settings)
 
         s3.upload(settings.root_folder, 's3://tests/remote/')
-        s3.download('s3://tests/remote/', os.path.join(temp_dir, 'remote/'))
+        s3.download('s3://tests/remote/', Path(temp_dir).joinpath('remote'))
 
-        assert open(os.path.join(temp_dir, 'remote/file1.txt')).read() == 'file1'
-        assert open(os.path.join(temp_dir, 'remote/subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
-        assert open(os.path.join(temp_dir, 'remote/subfolder/file3.txt')).read() == 'file3'
+        assert open(Path(temp_dir).joinpath('remote/file1.txt')).read() == 'file1'
+        assert open(Path(temp_dir).joinpath('remote/subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
+        assert open(Path(temp_dir).joinpath('remote/subfolder/file3.txt')).read() == 'file3'
 
 
 def test_no_file_defined():
@@ -141,7 +155,7 @@ def test_no_file_defined():
         """)
         os.environ.pop('S3CONF', default=None)
         settings = config.Settings(section='test', config_file=config_file)
-        s3 = S3Conf(settings=settings)
+        s3 = s3conf.S3Conf(settings=settings)
         s3.get_envfile().as_dict()
 
 
@@ -149,7 +163,7 @@ def test_setup_environment():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file, _ = _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
-        s3 = S3Conf(settings=settings)
+        s3 = s3conf.S3Conf(settings=settings)
 
         files.File('s3://s3conf/test.env', storage=s3.storage).write('TEST=123\nTEST2=456\n')
 
@@ -158,9 +172,9 @@ def test_setup_environment():
 
         assert env_vars['TEST'] == '123'
         assert env_vars['TEST2'] == '456'
-        assert open(os.path.join(settings.root_folder, 'file1.txt')).read() == 'file1'
-        assert open(os.path.join(settings.root_folder, 'subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
-        assert open(os.path.join(settings.root_folder, 'subfolder/file3.txt')).read() == 'file3'
+        assert open(settings.root_folder.joinpath('file1.txt')).read() == 'file1'
+        assert open(settings.root_folder.joinpath('subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
+        assert open(settings.root_folder.joinpath('subfolder/file3.txt')).read() == 'file3'
 
 
 def test_section_defined_in_settings():
@@ -194,13 +208,13 @@ def test_existing_lookup_config_folder():
         current_path = Path(temp_dir).joinpath('tests/path1/path2/path3/')
         current_path.mkdir(parents=True, exist_ok=True)
         config_folder = config._lookup_root_folder(current_path)
-        assert config_folder == os.path.dirname(config_file)
+        assert config_folder == config_file.parent.resolve()
 
 
 def test_non_existing_lookup_config_folder():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_folder = config._lookup_root_folder(temp_dir)
-    assert config_folder == '.'
+    assert config_folder == Path('.')
 
 
 def test_set_unset_env_var():
@@ -216,7 +230,7 @@ def test_set_unset_env_var():
             S3CONF=s3://s3conf/test.env
         """)
         settings = config.Settings(section='test', config_file=config_file)
-        s3 = S3Conf(settings=settings)
+        s3 = s3conf.S3Conf(settings=settings)
 
         env_file = s3.get_envfile()
         env_file.set('TEST=123', create=True)

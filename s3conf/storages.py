@@ -126,13 +126,14 @@ class LocalStorage(BaseStorage):
         open(file_name, 'wb').write(f.read())
 
     def list(self, path):
-        if os.path.isdir(path):
+        path = Path(path)
+        if path.is_dir():
             for root, dirs, files in os.walk(path):
                 for file in files:
-                    yield md5s3(open(file, 'rb')), strip_prefix(os.path.join(root, file), path)
+                    yield md5s3(open(file, 'rb')), Path(root).joinpath(file).relative_to(path)
         else:
             # only yields if it exists
-            if os.path.exists(path):
+            if path.exists():
                 # the relative path of a file to itself is empty
                 # same behavior as in boto3
                 yield md5s3(open(path, 'rb')), ''
