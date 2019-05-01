@@ -26,7 +26,7 @@ def strip_s3_path(path):
 
 class BaseStorage:
     def __init__(self, settings):
-        self._settings = settings
+        self.settings = settings
 
     def read_into_stream(self, file_path, stream=None):
         raise NotImplementedError()
@@ -56,12 +56,12 @@ class S3Storage(BaseStorage):
             logger.debug('Resource does not exist, creating a new one...')
             self._resource = boto3.resource(
                 's3',
-                aws_access_key_id=self._settings.get('S3CONF_ACCESS_KEY_ID') or self._settings.get('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=self._settings.get('S3CONF_SECRET_ACCESS_KEY') or self._settings.get('AWS_SECRET_ACCESS_KEY'),
-                aws_session_token=self._settings.get('S3CONF_SESSION_TOKEN') or self._settings.get('AWS_SESSION_TOKEN'),
-                region_name=self._settings.get('S3CONF_S3_REGION_NAME') or self._settings.get('AWS_S3_REGION_NAME'),
-                use_ssl=self._settings.get('S3CONF_S3_USE_SSL') or self._settings.get('AWS_S3_USE_SSL', True),
-                endpoint_url=self._settings.get('S3CONF_S3_ENDPOINT_URL') or self._settings.get('AWS_S3_ENDPOINT_URL'),
+                aws_access_key_id=self.settings.get('S3CONF_ACCESS_KEY_ID') or self.settings.get('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=self.settings.get('S3CONF_SECRET_ACCESS_KEY') or self.settings.get('AWS_SECRET_ACCESS_KEY'),
+                aws_session_token=self.settings.get('S3CONF_SESSION_TOKEN') or self.settings.get('AWS_SESSION_TOKEN'),
+                region_name=self.settings.get('S3CONF_S3_REGION_NAME') or self.settings.get('AWS_S3_REGION_NAME'),
+                use_ssl=self.settings.get('S3CONF_S3_USE_SSL') or self.settings.get('AWS_S3_USE_SSL', True),
+                endpoint_url=self.settings.get('S3CONF_S3_ENDPOINT_URL') or self.settings.get('AWS_S3_ENDPOINT_URL'),
             )
         return self._resource
 
