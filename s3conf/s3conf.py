@@ -2,9 +2,8 @@ import os
 import codecs
 import logging
 import json
-from shutil import rmtree
+from pathlib import Path
 
-from .utils import prepare_path, md5s3
 from . import exceptions, files, storages, config
 
 logger = logging.getLogger(__name__)
@@ -26,48 +25,18 @@ def parse_dotenv(data):
             yield k, v
 
 
-def unpack_list(files_list):
-    files_pairs = files_list.split(';') if files_list else []
-    files_map = []
-    for file_map in files_pairs:
-        file_source, _, file_target = file_map.rpartition(':')
-        if file_source and file_target:
-            files_map.append((file_source, file_target))
-    return files_map
-
-
 def phusion_dump(environment, path):
-    prepare_path(path if path.endswith('/') else path + '/')
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
     for k, v in environment.items():
-        with open(os.path.join(path, k), 'w') as f:
+        with open(path.joinpath(k), 'w') as f:
             f.write(v + '\n')
-
-
-def change_root_dir(file_path, root_dir=None):
-    if root_dir:
-        file_path = os.path.join(root_dir, file_path.lstrip('/'))
-    return file_path
-
-
-def expand_path(path, path_target):
-    mapping = []
-    if os.path.isdir(path):
-        for root, dirs, files in os.walk(path):
-            for file in files:
-                file_source = os.path.join(root, file)
-                file_target = os.path.join(path_target,
-                                           storages.strip_prefix(os.path.join(root, file), path).lstrip('/'))
-                mapping.append((file_source, file_target))
-    else:
-        mapping.append((path, path_target))
-    return mapping
 
 
 def raise_out_of_sync(local_file, remote_file):
     raise exceptions.LocalCopyOutdated(
-        'Upsync failed, target file probably changed since last downsync.\n'
-        'Run "sconf downsync" and redo your modifications to avoid conflicts. \n'
-        'Run "s3conf diff" to learn more about the modifications.\n'
+        'Upload failed, remote file probably changed since last download and md5 hashes in cache conflict.\n'
+        'If you want to upload anyway, use the -f flag. \n'
         'Offending file:\n\n    %s -> %s ',
         local_file,
         remote_file
@@ -79,126 +48,71 @@ class S3Conf:
         self.settings = settings or config.Settings()
         self.storage = storage or storages.S3Storage(settings=self.settings)
 
-    @property
-    def environment_file_path(self):
-        # resolving environment file path
-        file_name = self.settings.get('S3CONF')
-        if not file_name:
-            logger.error('Environemnt file name is not defined or is empty.')
-            raise exceptions.EnvfilePathNotDefinedError()
-        return file_name
-
-    def diff(self, local_root):
-        local_environment = change_root_dir(os.path.basename(self.environment_file_path).lstrip('/'), local_root)
-        with open(local_environment) as f:
-            diff = self.get_envfile().diff(f)
-        return diff
-
-    def upsync(self, local_root, map_files=False, force=False):
-        # running operations
-        local_environment = change_root_dir(os.path.basename(self.environment_file_path).lstrip('/'), local_root)
+    def push(self, force=False):
+        if not force:
+            md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
+            hashes = json.load(open(md5_hash_file_name)) if md5_hash_file_name.exists() else {}
 
         if not force:
-            md5_hash_file_name = os.path.join(local_root, '.md5')
-            hashes = json.load(open(md5_hash_file_name))
-
-        # checking if md5 hashes have not changed in remote storage since our last downsync
-        # if force is set, ignore the hash check and upsync anyway
-        if not force and hashes[local_environment] != self.get_envfile().md5():
-            raise_out_of_sync(local_environment, self.environment_file_path)
-        if map_files:
-            local_mapping_root = os.path.join(local_root, 'root')
-            env_vars = files.EnvFile(local_environment).as_dict()
-            file_map_list = unpack_list(env_vars.get('S3CONF_MAP'))
-            if not force:
-                for remote_path, local_path in file_map_list:
-                    local_path = change_root_dir(local_path, local_mapping_root)
-                    mapping = expand_path(local_path, remote_path)
-                    for local_file, remote_file in mapping:
-                        current_hash = hashes.get(local_file)
-                        if current_hash:
-                            if current_hash != self.storage.open(remote_file).md5():
+            for local_path, remote_path in self.settings.file_mappings.items():
+                mapping = config.expand_mapping(local_path, remote_path)
+                for local_file, remote_file in mapping.items():
+                    current_hash = hashes.get(str(local_file))
+                    if current_hash:
+                        with self.storage.open(remote_file) as remote_stream:
+                            if current_hash != remote_stream.md5():
                                 raise_out_of_sync(local_file, remote_file)
-                        else:
-                            logger.warning('New mapped file detected: %s', local_file)
+                    else:
+                        logger.warning('New mapped file detected: %s', local_file)
 
         hashes = {}
-        hashes.update(self.upload(local_environment, self.environment_file_path))
-        if map_files:
-            hashes.update(self.upload_mapping(file_map_list, root_dir=local_mapping_root))
-
-        md5_hash_file_name = os.path.join(local_root, '.md5')
-        json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
+        for local_path, remote_path in self.settings.file_mappings.items():
+            hashes.update(self.upload(local_path, remote_path))
+        md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
+        json.dump({str(k): v for k, v in hashes.items()}, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
-    def downsync(self, local_root, map_files=False, wipe=False):
-        if wipe:
-            rmtree(local_root, ignore_errors=True)
-        # running operations
+    def pull(self):
         hashes = {}
-        local_path = change_root_dir(os.path.basename(self.environment_file_path).lstrip('/'), local_root)
-        hashes.update(self.download(self.environment_file_path, local_path))
-
-        if map_files:
-            env_vars = files.EnvFile(local_path).as_dict()
-            local_mapping_root = os.path.join(local_root, 'root')
-            prepare_path(local_mapping_root, is_folder=True)
-            if env_vars.get('S3CONF_MAP'):
-                hashes.update(self.download_mapping(env_vars.get('S3CONF_MAP'), root_dir=local_mapping_root))
-
-        md5_hash_file_name = os.path.join(local_root, '.md5')
-        json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
+        for local_path, remote_path in self.settings.file_mappings.items():
+            hashes.update(self.download(remote_path, local_path))
+        md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
+        json.dump({str(k): v for k, v in hashes.items()}, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
-    def download_mapping(self, files, root_dir=None):
-        if isinstance(files, str):
-            files = unpack_list(files)
+    def download(self, remote_path, local_path, force=False):
         hashes = {}
-        for remote_file, local_file in files:
-            hashes.update(self.download(remote_file, change_root_dir(local_file, root_dir)))
-        return hashes
-
-    def upload_mapping(self, files, root_dir=None):
-        hashes = {}
-        if isinstance(files, str):
-            files = unpack_list(files)
-        for remote_file, local_file in files:
-            hashes.update(self.upload(change_root_dir(local_file, root_dir), remote_file))
-        return hashes
-
-    def download(self, path, path_target, force=False):
-        hashes = {}
-        logger.info('Downloading %s to %s', path, path_target)
-        for md5hash, file_path in self.storage.list(path):
-            if path.endswith('/') or not path:
-                target_name = os.path.join(path_target, file_path)
-            else:
-                target_name = path_target
-            prepare_path(target_name)
-            target_file = files.File(target_name)
-            existing_md5 = target_file.md5() if target_file.exists() and not force else None
-            if not existing_md5 or existing_md5 != md5hash:
-                source_name = os.path.join(path, file_path).rstrip('/')
-                logger.debug('Transferring file %s to %s', source_name, target_name)
-                with open(target_name, 'wb') as f:
-                    # join might add a trailing slash, but we know it is a file, so we remove it
-                    self.storage.open(source_name).read_into_stream(f)
+        logger.info('Downloading %s to %s', remote_path, local_path)
+        remote_files = {file_path: md5hash for md5hash, file_path in self.storage.list(remote_path)}
+        is_dir = False if len(remote_files) == 1 and '' in remote_files else True
+        local_storage = storages.LocalStorage(self.settings)
+        for file_path, md5hash in remote_files.items():
+            target_name = local_path.joinpath(file_path) if is_dir else local_path
+            target_name.parent.mkdir(parents=True, exist_ok=True)
+            with local_storage.open(target_name) as local_stream:
+                existing_md5 = local_stream.md5() if local_stream.exists() and not force else None
+                if not existing_md5 or existing_md5 != md5hash:
+                    source_name = os.path.join(remote_path, file_path).rstrip('/')
+                    logger.debug('Transferring file %s to %s', source_name, target_name)
+                    with self.storage.open(source_name) as remote_stream:
+                        remote_stream.read_into_stream(local_stream)
             hashes[target_name] = md5hash
         return hashes
 
-    def upload(self, path, path_target):
-        logger.info('Uploading %s to %s', path, path_target)
+    def upload(self, local_path, remote_path):
+        logger.info('Uploading %s to %s', local_path, remote_path)
         hashes = {}
-        mapping = expand_path(path, path_target)
-        for file_source, file_target in mapping:
-            file = self.storage.open(file_target)
-            file.write(open(file_source, 'rb'))
-            hashes[file_source] = file.md5()
+        mapping = config.expand_mapping(local_path, remote_path)
+        for file_source, file_target in mapping.items():
+            with open(file_source, 'rb') as local_stream, self.storage.open(file_target) as remote_stream:
+                files.copyfileobj(local_stream, remote_stream)
+            hashes[file_source] = remote_stream.md5()
         return hashes
 
     def get_envfile(self):
-        logger.info('Loading configs from {}'.format(self.environment_file_path))
-        return files.EnvFile.from_file(self.storage.open(self.environment_file_path))
+        logger.info('Loading configs from {}'.format(self.settings.environment_file_path))
+        return files.EnvFile.from_file(self.storage.open(self.settings.environment_file_path))
 
     def edit(self, create=False):
-        files.EnvFile.from_file(self.storage.open(self.environment_file_path)).edit(create=create)
+        with self.storage.open(self.settings.environment_file_path) as remote_stream:
+            files.EnvFile.from_file(remote_stream).edit(create=create)

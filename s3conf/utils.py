@@ -1,18 +1,7 @@
-import os
 import logging
 import hashlib
 
 logger = logging.getLogger(__name__)
-
-
-def prepare_path(file_target, is_folder=False):
-    # as the path might not exist, we can not test if it is a dir beforehand
-    # therefore, if it ends with a / it is considered a dir, otherwise, it is a regular file
-    # and the following code works for both cases
-    # if is_folder is explicitly provided, we append a '/' if it does not exist
-    if is_folder and not file_target.endswith('/'):
-        file_target += '/'
-    os.makedirs(os.path.abspath(file_target.rpartition('/')[0]), exist_ok=True)
 
 
 # Function : md5sum

@@ -2,6 +2,7 @@ import logging
 import subprocess
 import shlex
 import os
+from pathlib import Path
 
 import click
 from click.exceptions import UsageError
@@ -50,8 +51,9 @@ def main(ctx, edit, create):
         logger.debug('Running main entrypoint')
         if edit:
             if ctx.invoked_subcommand is None:
-                logger.debug('Using config file %s', config.LOCAL_CONFIG_FILE)
-                config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).edit(create=create)
+                settings = config.Settings()
+                logger.debug('Using config file %s', settings.config_file)
+                STORAGES['local'](settings=settings).open(settings.config_file).edit(create=create)
                 return
             else:
                 raise UsageError('Edit should not be called with a subcommand.')
@@ -103,9 +105,10 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
         if edit:
             conf.edit(create=create)
         else:
-            env_vars = conf.get_envfile().as_dict()
-            if env_vars.get('S3CONF_MAP') and map_files:
-                conf.download_mapping(env_vars.get('S3CONF_MAP'))
+            with conf.get_envfile() as env_file:
+                env_vars = env_file.as_dict()
+            if map_files:
+                conf.pull()
             if not quiet:
                 for var_name, var_value in sorted(env_vars.items(), key=lambda x: x[0]):
                     click.echo('{}={}'.format(var_name, var_value))
@@ -115,6 +118,64 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
         raise exceptions.EnvfilePathNotDefinedUsageError()
     except exceptions.FileDoesNotExist as e:
         raise UsageError('The file {} does not exist. Try "-c" option if you want to create it.'.format(str(e)))
+
+
+@main.command('add')
+@click.argument('section', cls=SectionArgument)
+@click.argument('local_path')
+def add(section, local_path):
+    """
+    Add a mapping to the S3CONF_MAP variable for the given SECTION pointing to LOCAL_PATH.
+    The remote file is mapped to the folder "files" in the same folder of the file pointed by S3CONF.
+    """
+    try:
+        settings = config.Settings(section=section)
+        local_path = Path(local_path).resolve().relative_to(settings.root_folder)
+        remote_path = os.path.join(os.path.dirname(settings.environment_file_path), 'files', local_path)
+        settings.add_mapping(remote_path, local_path)
+        config_file = config.ConfigFileResolver(settings.config_file, section=section)
+        config_file.set('S3CONF_MAP', settings.serialize_mappings())
+        config_file.save()
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
+
+
+@main.command('rm')
+@click.argument('section', cls=SectionArgument)
+@click.argument('local_path')
+def rm(section, local_path):
+    """
+    Removes the mapping in the S3CONF_MAP variable for the given SECTION pointing to LOCAL_PATH.
+    """
+    try:
+        settings = config.Settings(section=section)
+        local_path = Path(local_path).resolve().relative_to(settings.root_folder)
+        settings.rm_mapping(local_path)
+        config_file = config.ConfigFileResolver(settings.config_file, section=section)
+        config_file.set('S3CONF_MAP', settings.serialize_mappings())
+        config_file.save()
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
+
+
+@main.command('push')
+@click.argument('section', cls=SectionArgument)
+@click.option('--force',
+              '-f',
+              is_flag=True)
+def push(section, force):
+    """
+    Upload files mapped in S3CONF_MAP variable defined in s3conf.ini for the given section.
+    Stores the md5 hash for uploaded files in local cache. If the remote file md5 hash differs
+    from the value we have in our cache, the upload fails unless forced.
+    """
+    try:
+        settings = config.Settings(section=section)
+        storage = STORAGES['s3'](settings=settings)
+        conf = s3conf.S3Conf(storage=storage, settings=settings)
+        conf.push(force=force)
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
 @main.command('exec')
@@ -144,11 +205,7 @@ def exec_command(ctx, section, command, map_files):
     """
     try:
         logger.debug('Running exec command')
-        existing_sections = config.ConfigFileResolver(config.LOCAL_CONFIG_FILE).sections()
         command = ' '.join(command)
-        if section not in existing_sections:
-            command = '{} {}'.format(section, command) if command else section
-            section = None
 
         if not command:
             logger.warning('No command detected.')
@@ -158,8 +215,8 @@ def exec_command(ctx, section, command, map_files):
         settings = config.Settings(section=section)
         storage = STORAGES['s3'](settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
-
-        env_vars = conf.get_envfile().as_dict()
+        with conf.get_envfile() as env_file:
+            env_vars = env_file.as_dict()
         if env_vars.get('S3CONF_MAP') and map_files:
             conf.download_mapping(env_vars.get('S3CONF_MAP'))
 
@@ -206,72 +263,6 @@ def upload(remote_path, local_path):
     conf.upload(local_path, remote_path)
 
 
-@main.command('downsync')
-@click.argument('section', cls=SectionArgument)
-@click.option('--map-files',
-              '-m',
-              is_flag=True,
-              help='If defined, tries to map files from the storage to the local drive as defined by '
-                   'the variable S3CONF_MAP read from the S3CONF file using the config folder as the '
-                   'root directory.')
-def downsync(section, map_files):
-    """
-    For each section defined in the local config file, creates a folder inside the local config folder
-    named after the section. Downloads the environemnt file defined by the S3CONF variable for this section
-    to this folder.
-    """
-    try:
-        settings = config.Settings(section=section)
-        storage = STORAGES['s3'](settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
-        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-        conf.downsync(local_root, map_files=map_files)
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
-
-
-@main.command('upsync')
-@click.argument('section', cls=SectionArgument)
-@click.option('--map-files',
-              '-m',
-              is_flag=True,
-              help='If defined, tries to map files from the storage to the local drive as defined by '
-                   'the variable S3CONF_MAP read from the S3CONF file using the config folder as the '
-                   'root directory.')
-def upsync(section, map_files):
-    """
-    For each section defined in the local config file, look up for a folder inside the local config folder
-    named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
-    to the remote S3CONF path.
-    """
-    try:
-        settings = config.Settings(section=section)
-        storage = STORAGES['s3'](settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
-        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-        conf.upsync(local_root, map_files=map_files)
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
-
-
-@main.command('diff')
-@click.argument('section', cls=SectionArgument)
-def diff(section):
-    """
-    For each section defined in the local config file, look up for a folder inside the local config folder
-    named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
-    to the remote S3CONF path.
-    """
-    try:
-        settings = config.Settings(section=section)
-        storage = STORAGES['s3'](settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
-        local_root = os.path.join(config.LOCAL_CONFIG_FOLDER, section)
-        click.echo(''.join(conf.diff(local_root)))
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
-
-
 @main.command('set')
 @click.argument('section', cls=SectionArgument)
 @click.argument('value',
@@ -296,8 +287,8 @@ def set_variable(section, value, create):
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(settings=settings)
 
-        env_vars = conf.get_envfile()
-        env_vars.set(value, create=create)
+        with conf.get_envfile() as env_vars:
+            env_vars.set(value, create=create)
     except exceptions.EnvfilePathNotDefinedError:
         raise exceptions.EnvfilePathNotDefinedUsageError()
 
@@ -321,8 +312,8 @@ def unset_variable(section, value):
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(settings=settings)
 
-        env_vars = conf.get_envfile()
-        env_vars.unset(value)
+        with conf.get_envfile() as env_vars:
+            env_vars.unset(value)
     except exceptions.EnvfilePathNotDefinedError:
         raise exceptions.EnvfilePathNotDefinedUsageError()
 
@@ -342,9 +333,12 @@ def init(section, remote_file):
         raise UsageError('REMOTE_FILE must be a S3-like path. E.g.:\n\n'
                          's3conf init development s3://my-project/development.env')
     logger.debug('Running init command')
-    config_file_path = os.path.join(os.getcwd(), '.s3conf', 'config')
-    config_file = config.ConfigFileResolver(config_file_path, section=section)
+    settings = config.Settings(section=section)
+    config_file = config.ConfigFileResolver(settings.config_file, section=section)
     config_file.set('S3CONF', remote_file)
-    gitignore_file_path = os.path.join(os.getcwd(), '.s3conf', '.gitignore')
     config_file.save()
-    open(gitignore_file_path, 'w').write('*\n!config\n')
+    settings.cache_dir.mkdir(parents=True, exist_ok=True)
+    default_config_file = config.ConfigFileResolver(settings.default_config_file, section='DEFAULT')
+    default_config_file.save()
+    gitignore_file_path = settings.cache_dir.joinpath('.gitignore')
+    open(gitignore_file_path, 'w').write('*\n')

@@ -14,24 +14,19 @@ pip install s3conf
 
 ## Quick Start
 
-This package provides a command line client `s3conf` that helps us to manipulate enviroment variables.
-It looks for a configuration variable named `S3CONF` that should point to a file in a S3-like bucket. Eg.:
-
-```bash
-export S3CONF=s3://mybucket/myfile.env
-```
-
-If you have a `aws-cli` working, this should already be enough to get you started.
-
 ### S3 Credentials
 
-In addition to the `S3CONF` environment variable, the client will also search for these 
-authentication variables if they are provided:
+If you have a `aws-cli` working, `s3conf` will user your default credentials. This should already be 
+enough to get you started.
+
+#### Manually setting the credentials
+
+If you do not have a configured aws-cli, the client will search for these authentication variables in
+order to access the remote storage:
 
 ```bash
 S3CONF_ACCESS_KEY_ID=***access_key***
 S3CONF_SECRET_ACCESS_KEY=***secret_access_key***
-S3CONF_S3_REGION_NAME=***region_name***
 S3CONF_S3_ENDPOINT_URL=***endpoint_url***
 ```
 
@@ -40,141 +35,81 @@ The client also searchs for the regular `AWS_` variables, but their `S3CONF_*` v
 They are particularly useful when using non-aws blob storage services that are compatible with S3, 
 such as DigitalOcean Spaces, without messing your AWS credentials.
 
-## Project Environments Configuration
+### Create an Environment
 
-The recommended way to manage environment variables for a project is to create a `.s3conf/config` file
-in the project folder. This file should have the `S3CONF` variable for each existing evironemnt in the
-project. Since the credentials to access the bucket are not included in the file, it should be safe to
-commit this file together with project code. 
-
-To facilitate creating an environemt for a project, we can use the client command `init`. For example,
-issuing the command 
+Run this command in the project root:
 
 ```bash
-s3conf init dev s3://my-dev-bucket/myfile.env
+s3conf init dev s3://my-dev-bucket/dev-env/myfile.env
 ```
- 
-in the folder `/usr/sbneto/project` will create the file `/usr/sbneto/project/.s3conf/config` if it does
-not exist and add the following lines to it:
+
+This will create the file `s3conf.ini` if it does not exist and add the following lines to it:
 
 ```ini
 [dev]
-S3CONF=s3://my-dev-bucket/myfile.env
+S3CONF = s3://my-dev-bucket/dev-env/myfile.env
 ```
 
-This file is an INI file as described in Pyhton's [ConfigParser](https://docs.python.org/3/library/configparser.html).
-Each section of this file is considered a new environment in the project. More variables can be manually defined
-in each section (per section S3 credentials, for example).
+### Edit your environemnt
 
-When the section is provided to the client, the variables in the `.s3conf/config` associated section
-take precedence over the environment ones:
+Run this command in any folder of the project: 
 
 ```bash
-s3conf env dev
+s3conf env dev -e
 ```
 
-is equivalent to
+If it is a new bucket/file, use the `-c` flag to create it:
 
 ```bash
-S3CONF=s3://my-dev-bucket/myfile.env s3conf env
-```
-
-### Editing Your Environemnts Config File
-
-A convenient way to edit the Configuration File is to use the following command:
-
-```bash
-s3conf -e
-```
-
-This will open your default file editor, much like as how `crontab -e` works. If no configuration folder
-is found in the current directory path, you can use the `-c` flag to create it in the current folder
-`./.s3conf/config`:
-
-```bash
-s3conf -ec
-```
-
-## Retrieving the Environment File
-
-Once credentials are in place, we want to get the data from the file defined in the `S3CONF` environment variable.
-This can be achieved with the following command: 
-
-```bash
-$ s3conf env
-ENV_VAR_1=some_data_1
-ENV_VAR_2=some_data_2
-ENV_VAR_3=some_data_3
-```
-
-If you are using the `S3CONF` value from a particular section in your config, you should pass it as well:
-
-```bash
-$ s3conf env dev
-ENV_VAR_1=some_data_1
-ENV_VAR_2=some_data_2
-ENV_VAR_3=some_data_3
-```
-
-### Setting the Environment
-
-The output can be used to set the environment with `export`:
-
-```bash
-$ export $(s3conf env dev)
-```
-
-## Editing Your Environment File
-
-The client provides a convenient way to manipulate the environemnt file referenced by `S3CONF` variable: 
-
-```bash
-s3conf env -e
+s3conf env dev -ec
 ```
 
 This will download the environment file from the S3-like storage to a temporary file, open your 
 default file editor for manual editing (much like as `crontab -e` works) and upload the file back 
-to the blob storage service if any edits were made.
+to the remote storage service if any edits were made.
 
-## Setting/Unsetting a singe Environment Variable
+### Retrieve your environemnt
 
-You can set a single environemnt variable for a environment file pointed in a section in the following way:
+Running `s3conf env dev` in any folder of the project reads and output to stdout the contents
+of the environemnt file, while logs are sent to stderr:
 
 ```bash
-s3conf set dev ENV_VAR_1=some_data_1
+$ s3conf env dev
+info: Loading configs from s3://my-dev-bucket/dev-env/myfile.env
+ENV_VAR_1=some_data_1
+ENV_VAR_2=some_data_2
+ENV_VAR_3=some_data_3
 ```
 
-You can remove this environment variable from your file in a similar way:
+To apply this environemnt to your current shell you can do the following:
 
 ```bash
-s3conf unset dev ENV_VAR_1
+$ export $(s3conf env dev)
+info: Loading configs from s3://my-dev-bucket/dev-env/myfile.env
 ```
 
-## Mapping Files
+### Adding a credential file to the environment
 
-Besides setting evironment variables, we sometimes need to grab some configuration files. To do so, the
-client provides convenient way to store and download these files.
-
-If we define a variable named `S3CONF_MAP` inside the environemnt file referenced by `S3CONF`, we can 
-tell the client to download the files as defined in the former variable. 
-One example of this mapping would be the following:
+If you have some file or folder that you want to save in the environemnt, you can add a mapping:
 
 ```bash
-S3CONF_MAP=s3://my_bucket/config.file:/app/config/my.file;s3://my_bucket/etc/app_config_folder/:/etc/app_config_folder/;
+s3conf add dev ./some-credentials-file-or-folder
 ```
 
-This variable would map a single file `config.file` from our s3-like service to our local file `my.file` and
-the whole subfolder structure from `s3://my_bucket/etc/app_config_folder/` would be replicated in 
-`/etc/app_config_folder/`. Since s3-like services have no concept of folder, it is ***VERY IMPORTANT*** to add
-the ***trailing slash*** to the S3 path when it is a folder so that the client knows it has to traverse the
-directory structure.
 
-To instruct the client to map the files in the `S3CONF_MAP` when reading from the file in `S3CONF` simply
-pass the `-m` flag:
+### Pushing your credential files to the remote storage
 
 ```bash
-s3conf env -m
-``` 
+s3conf push dev
+```
+
+### Retrieve your environemnt with file mappings
+
+Use the `-m` flag to download the file mappings to your current project folder:
+
+```bash
+export $(s3conf env dev -m)
+```
 
 ## Using With Docker
 
@@ -184,7 +119,7 @@ that sets the environment variables and map all needed files:
 ```bash
 #!/usr/bin/env bash
 set -e
-export $(s3conf env -m)
+export $(s3conf env dev -m)
 exec "$@"
 ```
 
@@ -192,34 +127,4 @@ And use it when running your container (assuming your entrypoint is in `/app/ent
 
 ```bash 
 docker run --entrypoint `/app/entrypoint.sh` my_image my_command 
-```
-
-### Even Better With Phusion Baseimage
-
-A great base image that solves many challenges of working with docker is the Phusion Base Image, that can be found in 
-<https://github.com/phusion/baseimage-docker>. It manages environment variables by creating files in 
-the `/etc/container_environment` folder with the environement variable name and with its contents as the
-environement variables themselves (a full description of this process can be found in 
-<https://github.com/phusion/baseimage-docker#environment_variables>).
-
- The client has a feature that automatically creates these files based on the file read from the S3-like service.
- To do so, it is enough to run it with the `--phusion` flag. Therefore, if we wanted to map files and dump them in the Phusion
- format, we would run our client in the following way:
- 
- ```bash
- s3conf env -m --phusion
- ```
-
-The Phusion container also defines how to run scripts at container startup (an alternative for the `entrypoint.sh`, 
-defined in <https://github.com/phusion/baseimage-docker#running_startup_scripts>). Since the environment configuration
-is something we would like to run at the container startup quite often, it makes a lot of sense to add a script that
-runs the former command when creating the container. Luckly, I have already prepared an image based on Phusion Baseimage
-that has python 3.6 installed (python 3 is a requirement for the client) and has it all alredy configured. It can
-be found in [sbneto/phusion-python:3.6-env](https://hub.docker.com/r/sbneto/phusion-python/). To have a fully configured
-container based on this image, you just have to define your credentials and the `S3CONF` variable, prepare a bucket with
-your configuration files, and you are good to go (following [Phusion's way to run 
-one-shot commands](https://github.com/phusion/baseimage-docker#oneshot))
-
-```bash
-docker run --rm -e S3CONF=s3://my-bucket/my.env -e S3CONF_ACCESS_KEY_ID=***access_key*** -e S3CONF_SECRET_ACCESS_KEY=***secret_access_key*** sbneto/phusion-python:3.6-env /sbin/my_init -- echo "hello world"
 ```
