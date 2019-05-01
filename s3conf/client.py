@@ -125,7 +125,8 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
 @click.argument('local_path')
 def add(section, local_path):
     """
-
+    Add a mapping to the S3CONF_MAP variable for the given SECTION pointing to LOCAL_PATH.
+    The remote file is mapped to the folder "files" in the same folder of the file pointed by S3CONF.
     """
     try:
         settings = config.Settings(section=section)
@@ -144,7 +145,7 @@ def add(section, local_path):
 @click.argument('local_path')
 def rm(section, local_path):
     """
-
+    Removes the mapping in the S3CONF_MAP variable for the given SECTION pointing to LOCAL_PATH.
     """
     try:
         settings = config.Settings(section=section)
@@ -164,9 +165,9 @@ def rm(section, local_path):
               is_flag=True)
 def push(section, force):
     """
-    For each section defined in the local config file, look up for a folder inside the local config folder
-    named after the section. Uploads the environemnt file named as in the S3CONF variable for this section
-    to the remote S3CONF path.
+    Upload files mapped in S3CONF_MAP variable defined in s3conf.ini for the given section.
+    Stores the md5 hash for uploaded files in local cache. If the remote file md5 hash differs
+    from the value we have in our cache, the upload fails unless forced.
     """
     try:
         settings = config.Settings(section=section)
