@@ -80,26 +80,24 @@ class S3Storage(BaseStorage):
             else:
                 raise
 
-    def write(self, f, file_name):
-        logger.debug('Writing to %s', file_name)
+    def _write(self, f, file_name):
         bucket, path_target = strip_s3_path(file_name)
-        try:
-            bucket = self.s3.create_bucket(Bucket=bucket)
-        except ClientError as e:
-            if e.response['Error']['Code'] in (
-                'BucketAlreadyExists',
-                'BucketAlreadyOwnedByYou',
-                'BucketNameUnavailable',
-            ):
-                bucket = self.s3.Bucket(bucket)
-            else:
-                raise e
+        bucket = self.s3.Bucket(bucket)
         # boto3 closes the handler, creating a copy
         # https://github.com/boto/s3transfer/issues/80
         file_to_close = TemporaryFile()
         copyfileobj(f, file_to_close)
         file_to_close.seek(0)
         bucket.upload_fileobj(file_to_close, path_target)
+
+    def write(self, f, file_name):
+        logger.debug('Writing to %s', file_name)
+        try:
+            self._write(f, file_name)
+        except ClientError:
+            bucket, _ = strip_s3_path(file_name)
+            self.s3.create_bucket(Bucket=bucket)
+            self._write(f, file_name)
 
     def list(self, path):
         logger.debug('Listing %s', path)
