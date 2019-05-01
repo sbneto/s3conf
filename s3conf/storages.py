@@ -1,6 +1,5 @@
 import os
 import logging
-from shutil import copyfileobj
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryFile
@@ -9,7 +8,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from .utils import md5s3
-from .files import File
+from .files import File, copyfileobj
 from . import exceptions
 
 
