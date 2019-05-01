@@ -2,7 +2,6 @@ import os
 import codecs
 import logging
 import json
-from shutil import copyfileobj
 from pathlib import Path
 
 from . import exceptions, files, storages, config
@@ -107,7 +106,7 @@ class S3Conf:
         mapping = config.expand_mapping(local_path, remote_path)
         for file_source, file_target in mapping.items():
             with open(file_source, 'rb') as local_stream, self.storage.open(file_target) as remote_stream:
-                copyfileobj(local_stream, remote_stream)
+                files.copyfileobj(local_stream, remote_stream)
             hashes[file_source] = remote_stream.md5()
         return hashes
 

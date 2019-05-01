@@ -2,6 +2,7 @@ import logging
 import io
 import codecs
 import difflib
+import shutil
 from tempfile import NamedTemporaryFile, TemporaryFile
 
 import editor
@@ -31,16 +32,25 @@ def parse_env_var(value):
     return k, v
 
 
+def copyfileobj(fsrc, fdst, **kwargs):
+    if isinstance(fdst, File):
+        fdst.touch()
+    shutil.copyfileobj(fsrc, fdst, **kwargs)
+
+
 class File:
     def __init__(self, name, storage):
         self.name = name
         self.storage = storage
         self._stream = None
 
+    def touch(self):
+        if not self._stream:
+            self._stream = TemporaryFile()
+
     @property
     def stream(self):
-        if not self._stream:
-            self._stream = TemporaryFile(buffering=0)
+        self.touch()
         return self._stream
 
     def __enter__(self):
