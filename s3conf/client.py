@@ -105,7 +105,8 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
         if edit:
             conf.edit(create=create)
         else:
-            env_vars = conf.get_envfile().as_dict()
+            with conf.get_envfile() as env_file:
+                env_vars = env_file.as_dict()
             if map_files:
                 conf.pull()
             if not quiet:
@@ -195,8 +196,8 @@ def exec_command(ctx, section, command, map_files):
         settings = config.Settings(section=section)
         storage = STORAGES['s3'](settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
-
-        env_vars = conf.get_envfile().as_dict()
+        with conf.get_envfile() as env_file:
+            env_vars = env_file.as_dict()
         if env_vars.get('S3CONF_MAP') and map_files:
             conf.download_mapping(env_vars.get('S3CONF_MAP'))
 
@@ -267,8 +268,8 @@ def set_variable(section, value, create):
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(settings=settings)
 
-        env_vars = conf.get_envfile()
-        env_vars.set(value, create=create)
+        with conf.get_envfile() as env_vars:
+            env_vars.set(value, create=create)
     except exceptions.EnvfilePathNotDefinedError:
         raise exceptions.EnvfilePathNotDefinedUsageError()
 
@@ -292,8 +293,8 @@ def unset_variable(section, value):
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(settings=settings)
 
-        env_vars = conf.get_envfile()
-        env_vars.unset(value)
+        with conf.get_envfile() as env_vars:
+            env_vars.unset(value)
     except exceptions.EnvfilePathNotDefinedError:
         raise exceptions.EnvfilePathNotDefinedUsageError()
 

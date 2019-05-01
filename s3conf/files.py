@@ -2,7 +2,7 @@ import logging
 import io
 import codecs
 import difflib
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryFile
 
 import editor
 
@@ -37,6 +37,18 @@ class File:
         self.storage = storage
         self._stream = None
 
+    @property
+    def stream(self):
+        if not self._stream:
+            self._stream = TemporaryFile(buffering=0)
+        return self._stream
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.flush()
+
     def read_into_stream(self, stream):
         self.storage.read_into_stream(self.name, stream=stream)
 
@@ -61,10 +73,18 @@ class File:
     def write(self, data):
         if isinstance(data, str):
             data = data.encode('utf-8')
-        if isinstance(data, bytes):
-            self.storage.write(io.BytesIO(data), self.name)
-        else:
-            self.storage.write(data, self.name)
+        self.stream.write(data)
+
+    def flush(self):
+        if self._stream:
+            self.seek(0)
+            self.storage.write(self.stream, self.name)
+            self._stream.close()
+            self._stream = None
+
+    def seek(self, *args, **kwargs):
+        if self._stream:
+            self.stream.seek(*args, **kwargs)
 
     def diff(self, file_stream, fromfile='remote', tofile='local', **kwargs):
         file_stream.seek(0)
@@ -104,6 +124,7 @@ class File:
                 # race condition window to a very small period of time
                 if original_md5 == self.md5(raise_if_not_exists=False):
                     self.write(edited_data)
+                    self.flush()
                 else:
                     f_str = io.TextIOWrapper(io.BytesIO(edited_data))
                     diff = self.diff(f_str)
@@ -152,6 +173,7 @@ class EnvFile(File):
         if not value_set:
             new_lines.append('{}={}'.format(new_key, new_value))
         self.write('\n'.join(new_lines))
+        self.flush()
 
     def unset(self, unset_key):
         new_lines = []
@@ -169,6 +191,7 @@ class EnvFile(File):
 
         if unset_done:
             self.write('\n'.join(new_lines))
+            self.flush()
         else:
             logger.info('Key %s not found in environemnt file, doing nothing...', unset_key)
 

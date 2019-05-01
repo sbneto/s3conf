@@ -65,9 +65,10 @@ def test_file():
         _setup_basic_test(temp_dir)
         storage = storages.LocalStorage(settings=config.Settings(section='test'))
         test_file = Path(temp_dir).joinpath('test_file.txt')
-        f = files.File(test_file, storage)
-        f.write('test')
-        assert f.read() == b'test'
+        with storage.open(test_file) as f:
+            f.write('test')
+            f.flush()
+            assert f.read() == b'test'
 
 
 def test_add():
@@ -82,8 +83,8 @@ def test_diff():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         storage = storages.LocalStorage(settings=config.Settings(section='test'))
-        f = files.File(Path(temp_dir).joinpath('test.txt'), storage)
-        f.write('test1\ntest2\ntest3\n')
+        with storage.open(Path(temp_dir).joinpath('test.txt')) as f:
+            f.write('test1\ntest2\ntest3\n')
         with tempfile.NamedTemporaryFile(mode='w+') as temp_f:
             temp_f.write('test1\ntest2\ntest new\n')
             diff = f.diff(temp_f)
@@ -127,6 +128,25 @@ def test_push_pull_files():
         #     s3.upsync(local_root, map_files=True)
 
 
+def test_folder_check_download():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file, _ = _setup_basic_test(temp_dir)
+
+        settings = config.Settings(section='test')
+        s3 = s3conf.S3Conf(settings=settings)
+
+        settings.root_folder.joinpath('subfolder2').mkdir(parents=True, exist_ok=True)
+        open(settings.root_folder.joinpath('subfolder2/file4.txt'), 'w').write('file5')
+        open(settings.root_folder.joinpath('subfolder3'), 'w').write('subfolder3')
+
+        s3.upload(settings.root_folder.joinpath('subfolder'), 's3://tests/subfolder')
+        s3.upload(settings.root_folder.joinpath('subfolder2'), 's3://tests/subfolder2')
+        s3.upload(settings.root_folder.joinpath('subfolder3'), 's3://tests/subfolder3')
+        s3.download('s3://tests/subfolder', Path(temp_dir).joinpath('subfolder'))
+        s3.download('s3://tests/subfolder2', Path(temp_dir).joinpath('subfolder2'))
+        s3.download('s3://tests/subfolder3', Path(temp_dir).joinpath('subfolder3'))
+
+
 def test_upload_download_files():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file, _ = _setup_basic_test(temp_dir)
@@ -156,7 +176,8 @@ def test_no_file_defined():
         os.environ.pop('S3CONF', default=None)
         settings = config.Settings(section='test', config_file=config_file)
         s3 = s3conf.S3Conf(settings=settings)
-        s3.get_envfile().as_dict()
+        with s3.get_envfile() as env_file:
+            env_file.as_dict()
 
 
 def test_setup_environment():
@@ -165,9 +186,11 @@ def test_setup_environment():
         settings = config.Settings(section='test')
         s3 = s3conf.S3Conf(settings=settings)
 
-        files.File('s3://s3conf/test.env', storage=s3.storage).write('TEST=123\nTEST2=456\n')
+        with s3.storage.open('s3://s3conf/test.env') as f:
+            f.write('TEST=123\nTEST2=456\n')
 
-        env_vars = s3.get_envfile().as_dict()
+        with s3.get_envfile() as env_file:
+            env_vars = env_file.as_dict()
         s3.pull()
 
         assert env_vars['TEST'] == '123'
@@ -232,14 +255,13 @@ def test_set_unset_env_var():
         settings = config.Settings(section='test', config_file=config_file)
         s3 = s3conf.S3Conf(settings=settings)
 
-        env_file = s3.get_envfile()
-        env_file.set('TEST=123', create=True)
+        with s3.get_envfile() as env_file:
+            env_file.set('TEST=123', create=True)
 
-        env_vars = s3.get_envfile().as_dict()
-        assert env_vars['TEST'] == '123'
+            env_vars = env_file.as_dict()
+            assert env_vars['TEST'] == '123'
 
-        env_file = s3.get_envfile()
-        env_file.unset('TEST')
+            env_file.unset('TEST')
 
-        env_vars = s3.get_envfile().as_dict()
-        assert 'TEST' not in env_vars
+            env_vars = env_file.as_dict()
+            assert 'TEST' not in env_vars

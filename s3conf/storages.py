@@ -1,7 +1,9 @@
 import os
 import logging
+from shutil import copyfileobj
 from io import BytesIO
 from pathlib import Path
+from tempfile import TemporaryFile
 
 import boto3
 from botocore.exceptions import ClientError
@@ -30,9 +32,9 @@ class BaseStorage:
     def read_into_stream(self, file_path, stream=None):
         raise NotImplementedError()
 
-    def open(self, file_name):
+    def open(self, file_name, *args, **kwargs):
         logger.debug('Reading from %s', file_name)
-        return File(file_name, storage=self)
+        return File(file_name, storage=self, *args, **kwargs)
 
     def write(self, f, file_name):
         raise NotImplementedError()
@@ -93,7 +95,12 @@ class S3Storage(BaseStorage):
                 bucket = self.s3.Bucket(bucket)
             else:
                 raise e
-        bucket.upload_fileobj(f, path_target)
+        # boto3 closes the handler, creating a copy
+        # https://github.com/boto/s3transfer/issues/80
+        file_to_close = TemporaryFile()
+        copyfileobj(f, file_to_close)
+        file_to_close.seek(0)
+        bucket.upload_fileobj(file_to_close, path_target)
 
     def list(self, path):
         logger.debug('Listing %s', path)
@@ -104,7 +111,7 @@ class S3Storage(BaseStorage):
             for obj in bucket.objects.filter(Prefix=path):
                 relative_path = strip_prefix(obj.key, path)
                 if relative_path.startswith('/') or not relative_path:
-                    yield obj.e_tag, relative_path
+                    yield obj.e_tag, relative_path.lstrip('/')
         except ClientError as e:
             if e.response['Error']['Code'] == 'NoSuchBucket':
                 logger.warning('Bucket does not exist, list() returning empty.')
@@ -125,7 +132,7 @@ class LocalStorage(BaseStorage):
 
     def write(self, f, file_name):
         Path(file_name).parent.mkdir(parents=True, exist_ok=True)
-        open(file_name, 'wb').write(f.read())
+        copyfileobj(f, open(file_name, 'wb'))
 
     def list(self, path):
         path = Path(path)
