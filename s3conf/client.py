@@ -139,6 +139,24 @@ def add(section, local_path):
         raise exceptions.EnvfilePathNotDefinedUsageError()
 
 
+@main.command('rm')
+@click.argument('section', cls=SectionArgument)
+@click.argument('local_path')
+def rm(section, local_path):
+    """
+
+    """
+    try:
+        settings = config.Settings(section=section)
+        local_path = Path(local_path).resolve().relative_to(settings.root_folder)
+        settings.rm_mapping(local_path)
+        config_file = config.ConfigFileResolver(settings.config_file, section=section)
+        config_file.set('S3CONF_MAP', settings.serialize_mappings())
+        config_file.save()
+    except exceptions.EnvfilePathNotDefinedError:
+        raise exceptions.EnvfilePathNotDefinedUsageError()
+
+
 @main.command('push')
 @click.argument('section', cls=SectionArgument)
 @click.option('--force',

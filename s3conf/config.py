@@ -149,6 +149,11 @@ class Settings:
         local_path = self.root_folder.joinpath(local_path.relative_to(local_path.root))
         self.file_mappings[local_path] = remote_path
 
+    def rm_mapping(self, local_path):
+        local_path = Path(local_path)
+        local_path = self.root_folder.joinpath(local_path.relative_to(local_path.root))
+        del self.file_mappings[local_path]
+
     def serialize_mappings(self):
         file_mappings = {}
         for local_path, remote_path in self.file_mappings.items():
