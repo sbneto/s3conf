@@ -35,9 +35,8 @@ def phusion_dump(environment, path):
 
 def raise_out_of_sync(local_file, remote_file):
     raise exceptions.LocalCopyOutdated(
-        'Upsync failed, target file probably changed since last downsync.\n'
-        'Run "sconf downsync" and redo your modifications to avoid conflicts. \n'
-        'Run "s3conf diff" to learn more about the modifications.\n'
+        'Upload failed, remote file probably changed since last download and md5 hashes in cache conflict.\n'
+        'If you want to upload anyway, use the -f flag. \n'
         'Offending file:\n\n    %s -> %s ',
         local_file,
         remote_file
