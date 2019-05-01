@@ -53,16 +53,16 @@ class S3Conf:
     def push(self, force=False):
         if not force:
             md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
-            hashes = json.load(open(md5_hash_file_name))
+            hashes = json.load(open(md5_hash_file_name)) if md5_hash_file_name.exists() else {}
 
         if not force:
             for local_path, remote_path in self.settings.file_mappings.items():
                 mapping = config.expand_mapping(local_path, remote_path)
-                for local_file, remote_file in mapping:
-                    current_hash = hashes.get(local_file)
+                for local_file, remote_file in mapping.items():
+                    current_hash = hashes.get(str(local_file))
                     if current_hash:
-                        with self.storage.open(remote_file) as remote_steam:
-                            if current_hash != remote_steam.md5():
+                        with self.storage.open(remote_file) as remote_stream:
+                            if current_hash != remote_stream.md5():
                                 raise_out_of_sync(local_file, remote_file)
                     else:
                         logger.warning('New mapped file detected: %s', local_file)
@@ -108,7 +108,7 @@ class S3Conf:
         for file_source, file_target in mapping.items():
             with open(file_source, 'rb') as local_stream, self.storage.open(file_target) as remote_stream:
                 copyfileobj(local_stream, remote_stream)
-                hashes[file_source] = remote_stream.md5()
+            hashes[file_source] = remote_stream.md5()
         return hashes
 
     def get_envfile(self):
