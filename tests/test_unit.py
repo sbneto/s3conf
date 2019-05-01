@@ -53,7 +53,7 @@ def test_expand_mapping():
         assert mapping == {
             settings.config_file: 's3://s3conf/files/s3conf.ini',
         }
-        mapping = settings.create_mapping(settings.root_folder.joinpath('subfolder/'))
+        mapping = settings.create_mapping(settings.root_folder.joinpath('subfolder'))
         assert mapping == {
             settings.root_folder.joinpath('subfolder/file2.txt'): 's3://s3conf/files/subfolder/file2.txt',
             settings.root_folder.joinpath('subfolder/file3.txt'): 's3://s3conf/files/subfolder/file3.txt',
