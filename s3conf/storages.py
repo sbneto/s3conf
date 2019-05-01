@@ -86,6 +86,7 @@ class S3Storage(BaseStorage):
         # boto3 closes the handler, creating a copy
         # https://github.com/boto/s3transfer/issues/80
         file_to_close = TemporaryFile()
+        f.seek(0)
         copyfileobj(f, file_to_close)
         file_to_close.seek(0)
         bucket.upload_fileobj(file_to_close, path_target)
@@ -129,6 +130,7 @@ class LocalStorage(BaseStorage):
 
     def write(self, f, file_name):
         Path(file_name).parent.mkdir(parents=True, exist_ok=True)
+        f.seek(0)
         copyfileobj(f, open(file_name, 'wb'))
 
     def list(self, path):

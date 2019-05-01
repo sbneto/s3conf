@@ -5,9 +5,10 @@ from shutil import rmtree
 from pathlib import Path
 
 import pytest
+from botocore.exceptions import ClientError
 
 from s3conf import exceptions
-from s3conf import files, config, storages, s3conf
+from s3conf import config, storages, s3conf
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
 logging.getLogger('botocore').setLevel(logging.ERROR)
@@ -41,6 +42,15 @@ def _setup_basic_test(temp_dir):
     open(root_path.joinpath('subfolder/file3.txt'), 'w').write('file3')
 
     os.chdir(root_path)
+
+    try:
+        settings = config.Settings(section='test')
+        s3 = s3conf.S3Conf(settings=settings)
+        bucket = s3.storage.s3.Bucket('s3conf')
+        bucket.objects.all().delete()
+        bucket.delete()
+    except ClientError as e:
+        pass
 
     return config_file, default_config_file
 

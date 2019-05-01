@@ -87,7 +87,6 @@ class File:
 
     def flush(self):
         if self._stream:
-            self.seek(0)
             self.storage.write(self.stream, self.name)
             self._stream.close()
             self._stream = None
