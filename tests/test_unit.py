@@ -75,8 +75,11 @@ def test_add():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
+        settings.add_mapping('s3://s3conf/files/subfolder2', 'subfolder2')
         mapping = settings.serialize_mappings()
-        raise NotImplementedError()
+        assert mapping == 's3://s3conf/files/file1.txt:file1.txt;' \
+                          's3://s3conf/files/subfolder:subfolder;' \
+                          's3://s3conf/files/subfolder2:subfolder2'
 
 
 def test_diff():
