@@ -14,6 +14,21 @@ pip install s3conf
 
 ## Quick Start
 
+### Create an Environment
+
+Run this command in the project root:
+
+```bash
+s3conf init dev s3://my-dev-bucket/dev-env/myfile.env
+```
+
+This will create the file `s3conf.ini` if it does not exist and add the following lines to it:
+
+```ini
+[dev]
+S3CONF = s3://my-dev-bucket/dev-env/myfile.env
+```
+
 ### S3 Credentials
 
 If you have a `aws-cli` working, `s3conf` will user your default credentials. This should already be 
@@ -35,22 +50,7 @@ The client also searchs for the regular `AWS_` variables, but their `S3CONF_*` v
 They are particularly useful when using non-aws blob storage services that are compatible with S3, 
 such as DigitalOcean Spaces, without messing your AWS credentials.
 
-### Create an Environment
-
-Run this command in the project root:
-
-```bash
-s3conf init dev s3://my-dev-bucket/dev-env/myfile.env
-```
-
-This will create the file `s3conf.ini` if it does not exist and add the following lines to it:
-
-```ini
-[dev]
-S3CONF = s3://my-dev-bucket/dev-env/myfile.env
-```
-
-### Edit your environemnt
+### Edit your environment
 
 Run this command in any folder of the project: 
 
@@ -68,10 +68,10 @@ This will download the environment file from the S3-like storage to a temporary 
 default file editor for manual editing (much like as `crontab -e` works) and upload the file back 
 to the remote storage service if any edits were made.
 
-### Retrieve your environemnt
+### Retrieve your environment
 
 Running `s3conf env dev` in any folder of the project reads and output to stdout the contents
-of the environemnt file, while logs are sent to stderr:
+of the environment file, while logs are sent to stderr:
 
 ```bash
 $ s3conf env dev
@@ -81,7 +81,7 @@ ENV_VAR_2=some_data_2
 ENV_VAR_3=some_data_3
 ```
 
-To apply this environemnt to your current shell you can do the following:
+To apply this environment to your current shell you can do the following:
 
 ```bash
 $ export $(s3conf env dev)
@@ -90,7 +90,7 @@ info: Loading configs from s3://my-dev-bucket/dev-env/myfile.env
 
 ### Adding a credential file to the environment
 
-If you have some file or folder that you want to save in the environemnt, you can add a mapping:
+If you have some file or folder that you want to save in the environment, you can add a mapping:
 
 ```bash
 s3conf add dev ./some-credentials-file-or-folder
@@ -103,7 +103,7 @@ s3conf add dev ./some-credentials-file-or-folder
 s3conf push dev
 ```
 
-### Retrieve your environemnt with file mappings
+### Retrieve your environment with file mappings
 
 Use the `-m` flag to download the file mappings to your current project folder:
 
