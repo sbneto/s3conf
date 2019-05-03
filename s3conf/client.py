@@ -14,12 +14,6 @@ from . import s3conf, config, exceptions, storages, __version__
 logger = logging.getLogger(__name__)
 
 
-STORAGES = {
-    's3': storages.S3Storage,
-    'local': storages.LocalStorage,
-}
-
-
 class SectionArgument(click.Argument):
     def handle_parse_result(self, *args, **kwargs):
         try:
@@ -53,7 +47,8 @@ def main(ctx, edit, create):
             if ctx.invoked_subcommand is None:
                 settings = config.Settings()
                 logger.debug('Using config file %s', settings.config_file)
-                STORAGES['local'](settings=settings).open(settings.config_file).edit(create=create)
+                StorageCls = storages.get_storage(settings.config_file)
+                StorageCls(settings=settings).open(settings.config_file).edit(create=create)
                 return
             else:
                 raise UsageError('Edit should not be called with a subcommand.')
@@ -99,7 +94,8 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
     try:
         logger.debug('Running env command')
         settings = config.Settings(section=section)
-        storage = STORAGES['s3'](settings=settings)
+        StorageCls = storages.get_storage(settings.environment_file_path)
+        storage = StorageCls(settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         if edit:
@@ -171,7 +167,8 @@ def push(section, force):
     """
     try:
         settings = config.Settings(section=section)
-        storage = STORAGES['s3'](settings=settings)
+        StorageCls = storages.get_storage(settings.environment_file_path)
+        storage = StorageCls(settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         conf.push(force=force)
     except exceptions.EnvfilePathNotDefinedError:
@@ -213,7 +210,8 @@ def exec_command(ctx, section, command, map_files):
             return
 
         settings = config.Settings(section=section)
-        storage = STORAGES['s3'](settings=settings)
+        StorageCls = storages.get_storage(settings.environment_file_path)
+        storage = StorageCls(settings=settings)
         conf = s3conf.S3Conf(storage=storage, settings=settings)
         with conf.get_envfile() as env_file:
             env_vars = env_file.as_dict()
@@ -242,7 +240,8 @@ def download(remote_path, local_path):
     If REMOTE_PATH does not have a trailing slash, it is considered to be a file, and LOCAL_PATH should be a file as
     well.
     """
-    storage = STORAGES['s3']()
+    StorageCls = storages.get_storage(remote_path)
+    storage = StorageCls()
     conf = s3conf.S3Conf(storage=storage)
     conf.download(remote_path, local_path)
 
@@ -258,7 +257,8 @@ def upload(remote_path, local_path):
 
     If LOCAL_PATH is a file, the REMOTE_PATH file is created with the same contents.
     """
-    storage = STORAGES['s3']()
+    StorageCls = storages.get_storage(remote_path)
+    storage = StorageCls()
     conf = s3conf.S3Conf(storage=storage)
     conf.upload(local_path, remote_path)
 
@@ -285,7 +285,9 @@ def set_variable(section, value, create):
     try:
         logger.debug('Running env command')
         settings = config.Settings(section=section)
-        conf = s3conf.S3Conf(settings=settings)
+        StorageCls = storages.get_storage(settings.environment_file_path)
+        storage = StorageCls(settings=settings)
+        conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         with conf.get_envfile() as env_vars:
             env_vars.set(value, create=create)
@@ -310,7 +312,9 @@ def unset_variable(section, value):
     try:
         logger.debug('Running env command')
         settings = config.Settings(section=section)
-        conf = s3conf.S3Conf(settings=settings)
+        StorageCls = storages.get_storage(settings.environment_file_path)
+        storage = StorageCls(settings=settings)
+        conf = s3conf.S3Conf(storage=storage, settings=settings)
 
         with conf.get_envfile() as env_vars:
             env_vars.unset(value)

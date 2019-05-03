@@ -46,7 +46,8 @@ def raise_out_of_sync(local_file, remote_file):
 class S3Conf:
     def __init__(self, storage=None, settings=None):
         self.settings = settings or config.Settings()
-        self.storage = storage or storages.S3Storage(settings=self.settings)
+        StorageCls = storages.get_storage(settings.config_file)
+        self.storage = storage or StorageCls(settings=self.settings)
 
     def push(self, force=False):
         if not force:
