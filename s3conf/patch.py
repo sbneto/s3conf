@@ -7,6 +7,10 @@ import click
 from editor import get_editor, get_editor_args
 from click_log import core
 
+import warnings
+
+# https://github.com/googleapis/google-auth-library-python/issues/271
+warnings.filterwarnings("ignore", "Your application has authenticated using end user credentials")
 
 # apply patches that allow editor with args
 # https://github.com/fmoo/python-editor/pull/15
