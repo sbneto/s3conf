@@ -6,6 +6,7 @@ from tempfile import TemporaryFile
 
 import boto3
 from botocore.exceptions import ClientError
+from google.cloud import storage
 
 from .utils import md5s3
 from .files import File, copyfileobj
@@ -22,6 +23,26 @@ def strip_prefix(text, prefix):
 def strip_s3_path(path):
     bucket, _, path = strip_prefix(path, 's3://').partition('/')
     return bucket, path
+
+
+def strip_gs_path(path):
+    bucket, _, path = strip_prefix(path, 'gs://').partition('/')
+    return bucket, path
+
+
+def get_storage(path):
+    logger.debug('Getting storage for %s', path)
+    prefix, _, _ = str(path).partition(':')
+    try:
+        storage = {
+            's3': S3Storage,
+            'gs': GCStorage,
+            'file': LocalStorage,
+        }[prefix]
+    except KeyError:
+        storage = LocalStorage
+    logger.debug('Using %s storage', storage)
+    return storage
 
 
 class BaseStorage:
@@ -115,6 +136,55 @@ class S3Storage(BaseStorage):
                 logger.warning('Bucket does not exist, list() returning empty.')
             else:
                 raise
+
+
+class GCStorage(BaseStorage):
+    def __init__(self, settings=None):
+        super(__class__, self).__init__(settings=settings)
+        self._resource = None
+
+    @property
+    def gcs(self):
+        logger.debug('Getting GCS resource')
+        if not self._resource:
+            logger.debug('Resource does not exist, creating a new one...')
+            self._resource = storage.Client()
+        return self._resource
+
+    def read_into_stream(self, file_path, stream=None):
+        stream = stream or BytesIO()
+        bucket_name, path = strip_gs_path(file_path)
+        bucket = self.gcs.get_bucket(bucket_name)
+        blob = bucket.blob(path)
+        blob.download_to_file(stream)
+        stream.seek(0)
+        return stream
+
+    def _write(self, f, file_name):
+        bucket_name, path = strip_gs_path(file_name)
+        bucket = self.gcs.get_bucket(bucket_name)
+        blob = bucket.blob(path)
+        f.seek(0)
+        blob.upload_from_file(f, path)
+
+    def write(self, f, file_name):
+        logger.debug('Writing to %s', file_name)
+        try:
+            self._write(f, file_name)
+        except Exception:
+            bucket, _ = strip_gs_path(file_name)
+            self.gcs.create_bucket(bucket)
+            self._write(f, file_name)
+
+    def list(self, path):
+        logger.debug('Listing %s', path)
+        bucket_name, path = strip_gs_path(path)
+        bucket = self.gcs.get_bucket(bucket_name)
+        path = path.rstrip('/')
+        for obj in bucket.list_blobs(prefix=path):
+            relative_path = strip_prefix(obj.name, path)
+            if relative_path.startswith('/') or not relative_path:
+                yield obj.etag, relative_path.lstrip('/')
 
 
 class LocalStorage(BaseStorage):
