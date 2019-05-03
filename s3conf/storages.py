@@ -148,7 +148,12 @@ class GCStorage(BaseStorage):
         logger.debug('Getting GCS resource')
         if not self._resource:
             logger.debug('Resource does not exist, creating a new one...')
-            self._resource = storage.Client()
+            credential_file = self.settings.get('S3CONF_APPLICATION_CREDENTIALS') \
+                              or self.settings.get('GOOGLE_APPLICATION_CREDENTIALS')
+            if credential_file:
+                self._resource = storage.Client.from_service_account_json(credential_file)
+            else:
+                self._resource = storage.Client()
         return self._resource
 
     def read_into_stream(self, file_path, stream=None):
