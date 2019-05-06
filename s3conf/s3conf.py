@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from . import exceptions, config
-from .storage import files
+from .storages import EnvFile
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -79,12 +79,16 @@ class S3Conf:
         json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
-    def get_envfile(self):
+    def get_envfile(self, create=False):
         logger.info('Loading configs from {}'.format(self.settings.environment_file_path))
         remote_storage = self.settings.storages.storage(self.settings.environment_file_path)
-        return files.EnvFile.from_file(remote_storage.open(self.settings.environment_file_path))
+        if not list(remote_storage.list(self.settings.environment_file_path)) and create:
+            mode = 'w+'
+        else:
+            mode = 'r+'
+        return EnvFile.from_file(remote_storage.open(self.settings.environment_file_path, mode=mode))
 
     def edit(self, create=False):
         remote_storage = self.settings.storages.storage(self.settings.environment_file_path)
         with remote_storage.open(self.settings.environment_file_path) as remote_stream:
-            files.EnvFile.from_file(remote_stream).edit(create=create)
+            EnvFile.from_file(remote_stream).edit(create=create)
