@@ -48,7 +48,7 @@ def _setup_basic_test(temp_dir):
 
     try:
         settings = config.Settings(section='test')
-        bucket = settings.storages.remote.s3.Bucket('s3conf')
+        bucket = settings.storages.storage(settings.environment_file_path).s3.Bucket('s3conf')
         bucket.objects.all().delete()
         bucket.delete()
     except ClientError as e:
@@ -184,6 +184,20 @@ def test_upload_download_files():
 
         s3.settings.storages.upload(settings.root_folder, 's3://tests/remote')
         s3.settings.storages.download('s3://tests/remote', Path(temp_dir).joinpath('remote'))
+
+        assert open(Path(temp_dir).joinpath('remote/file1.txt')).read() == 'file1'
+        assert open(Path(temp_dir).joinpath('remote/subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
+        assert open(Path(temp_dir).joinpath('remote/subfolder/file3.txt')).read() == 'file3'
+
+
+def test_copy():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file, _ = _setup_basic_test(temp_dir)
+
+        settings = config.Settings(section='test')
+        settings.storages.copy(settings.root_folder, 's3://s3conf/remote')
+        settings.storages.copy(settings.root_folder, 's3://s3conf/remote')
+        settings.storages.copy('s3://s3conf/remote', Path(temp_dir).joinpath('remote'))
 
         assert open(Path(temp_dir).joinpath('remote/file1.txt')).read() == 'file1'
         assert open(Path(temp_dir).joinpath('remote/subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
