@@ -110,15 +110,15 @@ class StorageMapper:
         _, _, source_path = partition_path(source_path)
         _, _, target_path = partition_path(target_path)
         files = {file_path: etag for etag, file_path in source.list(source_path)}
-        is_dir = False if len(files) == 1 and '' in files else True
+        is_dir = False if len(files) == 1 and source_path in files else True
         if not is_dir:
-            yield files[''], source_path, target_path
+            yield files[source_path], source_path, target_path
         else:
             for file_path, etag in files.items():
-                yield etag, os.path.join(source_path, file_path), os.path.join(target_path, file_path)
+                yield etag, file_path, os.path.join(target_path, os.path.relpath(file_path, source_path))
 
     def copy(self, source_path, target_path, force=False):
-        hashes = {}
+        hashes = []
         source = self.storage(source_path)
         target = self.storage(target_path)
         _, _, target_path = partition_path(target_path)
@@ -129,35 +129,7 @@ class StorageMapper:
             if should_copy:
                 with source.open(source_file) as source_stream, target.open(target_file, 'wb') as target_stream:
                     copyfileobj(source_stream, target_stream)
-            hashes[target_file] = etag
-        return hashes
-
-    def download(self, remote_path, local_path, force=False):
-        hashes = {}
-        logger.info('Downloading %s to %s', remote_path, local_path)
-        remote_files = {file_path: md5hash for md5hash, file_path in self.remote.list(remote_path)}
-        is_dir = False if len(remote_files) == 1 and '' in remote_files else True
-        for file_path, md5hash in remote_files.items():
-            target_name = local_path.joinpath(file_path) if is_dir else local_path
-            target_name.parent.mkdir(parents=True, exist_ok=True)
-            with self.local.open(target_name) as local_stream:
-                existing_md5 = local_stream.md5() if local_stream.exists() and not force else None
-                if not existing_md5 or existing_md5 != md5hash:
-                    source_name = os.path.join(remote_path, file_path).rstrip('/')
-                    logger.debug('Transferring file %s to %s', source_name, target_name)
-                    with self.remote.open(source_name) as remote_stream:
-                        copyfileobj(remote_stream, local_stream)
-            hashes[target_name] = md5hash
-        return hashes
-
-    def upload(self, local_path, remote_path):
-        logger.info('Uploading %s to %s', local_path, remote_path)
-        hashes = {}
-        for file_source, file_target in self.map(local_path, remote_path):
-            with self.local.open(file_source, 'rb') as local_stream, \
-                    self.remote.open(file_target) as remote_stream:
-                copyfileobj(local_stream, remote_stream)
-            hashes[file_source] = remote_stream.md5()
+            hashes.append((source_file, target_file, etag))
         return hashes
 
 
