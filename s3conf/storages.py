@@ -6,6 +6,7 @@ import difflib
 from shutil import copyfileobj
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from functools import lru_cache
 
 import editor
 
@@ -41,10 +42,10 @@ def strip_prefix(text, prefix):
 
 
 def partition_path(path):
-    protocol, _, path = path.partition(':')
+    protocol, _, path = str(path).partition(':')
     if not path:
         path = protocol
-        protocol = None
+        protocol = 'file'
         bucket = None
     else:
         bucket, _, path = path.lstrip('/').partition('/')
@@ -73,20 +74,6 @@ def get_gs_storage(settings, file_cls, bucket):
     )
 
 
-def get_storage(settings, file_cls):
-    logger.debug('Getting storage for %s', settings.environment_file_path)
-    protocol, bucket, path = partition_path(str(settings.environment_file_path))
-    try:
-        storage = {
-            's3': get_s3_storage(settings, file_cls, bucket),
-            'gs': get_gs_storage(settings, file_cls, bucket),
-        }[protocol]
-    except KeyError:
-        storage = LocalStorage(file_cls=file_cls, root=settings.root_folder)
-    logger.debug('Using %s storage', storage)
-    return storage
-
-
 def list_all_files(path):
     if path.is_dir():
         mapping = iter(Path(root).joinpath(name).resolve() for root, _, names in os.walk(path) for name in names)
@@ -95,19 +82,55 @@ def list_all_files(path):
     return mapping
 
 
+@lru_cache()
+def _make_storage(settings, protocol, bucket):
+    try:
+        storage = {
+            's3': get_s3_storage(settings, BaseFile, bucket),
+            'gs': get_gs_storage(settings, BaseFile, bucket),
+            'file': LocalStorage(file_cls=BaseFile, root=settings.root_folder),
+        }[protocol]
+    except KeyError:
+        storage = LocalStorage(file_cls=BaseFile, root=settings.root_folder)
+    logger.debug('Using %s storage', storage)
+    return storage
+
+
 class StorageMapper:
     def __init__(self, settings):
         self.settings = settings
-        self.local = LocalStorage(file_cls=BaseFile, root=settings.root_folder)
-        self.remote = get_storage(settings, BaseFile)
 
-    @classmethod
-    def map(cls, local_path, remote_path):
-        if local_path.is_file():
-            local_path = local_path.parent
-            remote_path = os.path.dirname(remote_path)
-        for f in list_all_files(local_path):
-            yield f, os.path.join(remote_path, f.relative_to(local_path))
+    def storage(self, path):
+        protocol, bucket, _ = partition_path(path)
+        logger.debug('Getting storage for %s %s', protocol, bucket)
+        return _make_storage(self.settings, protocol, bucket)
+
+    def map(self, source_path, target_path):
+        source = self.storage(source_path)
+        _, _, source_path = partition_path(source_path)
+        _, _, target_path = partition_path(target_path)
+        files = {file_path: etag for etag, file_path in source.list(source_path)}
+        is_dir = False if len(files) == 1 and '' in files else True
+        if not is_dir:
+            yield files[''], source_path, target_path
+        else:
+            for file_path, etag in files.items():
+                yield etag, os.path.join(source_path, file_path), os.path.join(target_path, file_path)
+
+    def copy(self, source_path, target_path, force=False):
+        hashes = {}
+        source = self.storage(source_path)
+        target = self.storage(target_path)
+        _, _, target_path = partition_path(target_path)
+        if not force:
+            target_hashes = {os.path.join(target_path, file_path): etag for etag, file_path in target.list(target_path)}
+        for etag, source_file, target_file in self.map(source_path, target_path):
+            should_copy = force or target_file not in target_hashes or target_hashes[target_file] != etag
+            if should_copy:
+                with source.open(source_file) as source_stream, target.open(target_file, 'wb') as target_stream:
+                    copyfileobj(source_stream, target_stream)
+            hashes[target_file] = etag
+        return hashes
 
     def download(self, remote_path, local_path, force=False):
         hashes = {}
