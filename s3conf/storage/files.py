@@ -33,6 +33,7 @@ class File:
     def flush(self) -> None:
         self.file.flush()
         self._buffer.seek(0)
+        logger.debug('Writing buffer to %s', self.name)
         self.storage.write(self._buffer, self.name)
 
     # IOBase
