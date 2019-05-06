@@ -100,7 +100,7 @@ class StorageMapper:
     def __init__(self, settings):
         self.settings = settings
 
-    def storage(self, path):
+    def storage(self, path=''):
         protocol, bucket, _ = partition_path(path)
         logger.debug('Getting storage for %s %s', protocol, bucket)
         return _make_storage(self.settings, protocol, bucket)
@@ -234,8 +234,10 @@ class EnvFile(BaseFile):
                 raise
         if not value_set:
             new_lines.append('{}={}'.format(new_key, new_value))
+        self.seek(0)
         self.truncate()
         self.write('\n'.join(new_lines))
+        self.file.flush()
 
     def unset(self, unset_key):
         new_lines = []
@@ -253,8 +255,10 @@ class EnvFile(BaseFile):
             logger.warning('File does not exist')
 
         if unset_done:
+            self.seek(0)
             self.truncate()
             self.write('\n'.join(new_lines))
+            self.file.flush()
         else:
             logger.info('Key %s not found in environemnt file, doing nothing...', unset_key)
 
