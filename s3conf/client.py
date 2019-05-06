@@ -5,11 +5,12 @@ import os
 from pathlib import Path
 
 import click
-from click.exceptions import UsageError
 import click_log
+from click.exceptions import UsageError, MissingParameter
 
-from . import s3conf, config, exceptions, storages, __version__
-
+from . import s3conf, config, __version__
+from .exceptions import EnvfilePathNotDefinedError, EnvfilePathNotDefinedUsageError
+from .storage.exceptions import FileDoesNotExist
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ class SectionArgument(click.Argument):
     def handle_parse_result(self, *args, **kwargs):
         try:
             return super().handle_parse_result(*args, **kwargs)
-        except click.exceptions.MissingParameter:
-            raise exceptions.EnvfilePathNotDefinedUsageError()
+        except MissingParameter:
+            raise EnvfilePathNotDefinedUsageError()
 
 
 @click.group(invoke_without_command=True)
@@ -47,15 +48,14 @@ def main(ctx, edit, create):
             if ctx.invoked_subcommand is None:
                 settings = config.Settings()
                 logger.debug('Using config file %s', settings.config_file)
-                StorageCls = storages.get_storage(settings.config_file)
-                StorageCls(settings=settings).open(settings.config_file).edit(create=create)
+                settings.storages.local.open(settings.config_file).edit(create=create)
                 return
             else:
                 raise UsageError('Edit should not be called with a subcommand.')
         # manually call help in case no relevant settings were defined
         if ctx.invoked_subcommand is None:
             click.echo(main.get_help(ctx))
-    except exceptions.FileDoesNotExist as e:
+    except FileDoesNotExist as e:
         raise UsageError('The file {} does not exist. Try "-c" option if you want to create it.'.format(str(e)))
 
 
@@ -94,9 +94,7 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
     try:
         logger.debug('Running env command')
         settings = config.Settings(section=section)
-        StorageCls = storages.get_storage(settings.environment_file_path)
-        storage = StorageCls(settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
+        conf = s3conf.S3Conf(settings=settings)
 
         if edit:
             conf.edit(create=create)
@@ -110,9 +108,9 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
                     click.echo('{}={}'.format(var_name, var_value))
             if phusion:
                 s3conf.phusion_dump(env_vars, phusion_path)
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
-    except exceptions.FileDoesNotExist as e:
+    except EnvfilePathNotDefinedError:
+        raise EnvfilePathNotDefinedUsageError()
+    except FileDoesNotExist as e:
         raise UsageError('The file {} does not exist. Try "-c" option if you want to create it.'.format(str(e)))
 
 
@@ -132,8 +130,8 @@ def add(section, local_path):
         config_file = config.ConfigFileResolver(settings.config_file, section=section)
         config_file.set('S3CONF_MAP', settings.serialize_mappings())
         config_file.save()
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
+    except EnvfilePathNotDefinedError:
+        raise EnvfilePathNotDefinedUsageError()
 
 
 @main.command('rm')
@@ -150,8 +148,8 @@ def rm(section, local_path):
         config_file = config.ConfigFileResolver(settings.config_file, section=section)
         config_file.set('S3CONF_MAP', settings.serialize_mappings())
         config_file.save()
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
+    except EnvfilePathNotDefinedError:
+        raise EnvfilePathNotDefinedUsageError()
 
 
 @main.command('push')
@@ -167,12 +165,10 @@ def push(section, force):
     """
     try:
         settings = config.Settings(section=section)
-        StorageCls = storages.get_storage(settings.environment_file_path)
-        storage = StorageCls(settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
+        conf = s3conf.S3Conf(settings=settings)
         conf.push(force=force)
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
+    except EnvfilePathNotDefinedError:
+        raise EnvfilePathNotDefinedUsageError()
 
 
 @main.command('exec')
@@ -210,57 +206,18 @@ def exec_command(ctx, section, command, map_files):
             return
 
         settings = config.Settings(section=section)
-        StorageCls = storages.get_storage(settings.environment_file_path)
-        storage = StorageCls(settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
+        conf = s3conf.S3Conf(settings=settings)
         with conf.get_envfile() as env_file:
             env_vars = env_file.as_dict()
-        if env_vars.get('S3CONF_MAP') and map_files:
-            conf.download_mapping(env_vars.get('S3CONF_MAP'))
+        if map_files:
+            conf.pull()
 
         current_env = os.environ.copy()
         current_env.update(env_vars)
         logger.debug('Executing command "%s"', command)
         subprocess.run(shlex.split(command), env=current_env, check=True)
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
-
-
-@main.command('download')
-@click.argument('remote_path')
-@click.argument('local_path')
-def download(remote_path, local_path):
-    """
-    Download a file or folder from the S3-like service.
-
-    If REMOTE_PATH has a trailing slash it is considered to be a folder, e.g.: "s3://my-bucket/my-folder/". In this
-    case, LOCAL_PATH must be a folder as well. The files and subfolder structure in REMOTE_PATH are copied to
-    LOCAL_PATH.
-
-    If REMOTE_PATH does not have a trailing slash, it is considered to be a file, and LOCAL_PATH should be a file as
-    well.
-    """
-    StorageCls = storages.get_storage(remote_path)
-    storage = StorageCls()
-    conf = s3conf.S3Conf(storage=storage)
-    conf.download(remote_path, local_path)
-
-
-@main.command('upload')
-@click.argument('local_path')
-@click.argument('remote_path')
-def upload(remote_path, local_path):
-    """
-    Upload a file or folder to the S3-like service.
-
-    If LOCAL_PATH is a folder, the files and subfolder structure in LOCAL_PATH are copied to REMOTE_PATH.
-
-    If LOCAL_PATH is a file, the REMOTE_PATH file is created with the same contents.
-    """
-    StorageCls = storages.get_storage(remote_path)
-    storage = StorageCls()
-    conf = s3conf.S3Conf(storage=storage)
-    conf.upload(local_path, remote_path)
+    except EnvfilePathNotDefinedError:
+        raise EnvfilePathNotDefinedUsageError()
 
 
 @main.command('set')
@@ -285,14 +242,12 @@ def set_variable(section, value, create):
     try:
         logger.debug('Running env command')
         settings = config.Settings(section=section)
-        StorageCls = storages.get_storage(settings.environment_file_path)
-        storage = StorageCls(settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
+        conf = s3conf.S3Conf(settings=settings)
 
         with conf.get_envfile() as env_vars:
             env_vars.set(value, create=create)
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
+    except EnvfilePathNotDefinedError:
+        raise EnvfilePathNotDefinedUsageError()
 
 
 @main.command('unset')
@@ -312,14 +267,12 @@ def unset_variable(section, value):
     try:
         logger.debug('Running env command')
         settings = config.Settings(section=section)
-        StorageCls = storages.get_storage(settings.environment_file_path)
-        storage = StorageCls(settings=settings)
-        conf = s3conf.S3Conf(storage=storage, settings=settings)
+        conf = s3conf.S3Conf(settings=settings)
 
         with conf.get_envfile() as env_vars:
             env_vars.unset(value)
-    except exceptions.EnvfilePathNotDefinedError:
-        raise exceptions.EnvfilePathNotDefinedUsageError()
+    except EnvfilePathNotDefinedError:
+        raise EnvfilePathNotDefinedUsageError()
 
 
 @main.command('init')
