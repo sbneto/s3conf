@@ -135,9 +135,9 @@ def test_push_pull_files():
         hashes = s3.push(force=True)
 
         assert hashes == {
-            settings.root_folder.joinpath('file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
-            settings.root_folder.joinpath('subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
-            settings.root_folder.joinpath('subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
+            str(settings.root_folder.joinpath('file1.txt')): '"826e8142e6baabe8af779f5f490cf5f5"',
+            str(settings.root_folder.joinpath('subfolder/file2.txt')): '"c269c739c5226abab0a4fce7df301155-2"',
+            str(settings.root_folder.joinpath('subfolder/file3.txt')): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
         os.remove(Path(settings.root_folder).joinpath('file1.txt'))
@@ -146,9 +146,9 @@ def test_push_pull_files():
         hashes = s3.pull()
 
         assert hashes == {
-            settings.root_folder.joinpath('file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
-            settings.root_folder.joinpath('subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
-            settings.root_folder.joinpath('subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
+            str(settings.root_folder.joinpath('file1.txt')): '"826e8142e6baabe8af779f5f490cf5f5"',
+            str(settings.root_folder.joinpath('subfolder/file2.txt')): '"c269c739c5226abab0a4fce7df301155-2"',
+            str(settings.root_folder.joinpath('subfolder/file3.txt')): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
         # # must fail unless forced
@@ -173,21 +173,6 @@ def test_folder_check_download():
         s3.download('s3://tests/subfolder', Path(temp_dir).joinpath('subfolder'))
         s3.download('s3://tests/subfolder2', Path(temp_dir).joinpath('subfolder2'))
         s3.download('s3://tests/subfolder3', Path(temp_dir).joinpath('subfolder3'))
-
-
-def test_upload_download_files():
-    with tempfile.TemporaryDirectory() as temp_dir:
-        config_file, _ = _setup_basic_test(temp_dir)
-
-        settings = config.Settings(section='test')
-        s3 = s3conf.S3Conf(settings=settings)
-
-        s3.settings.storages.upload(settings.root_folder, 's3://tests/remote')
-        s3.settings.storages.download('s3://tests/remote', Path(temp_dir).joinpath('remote'))
-
-        assert open(Path(temp_dir).joinpath('remote/file1.txt')).read() == 'file1'
-        assert open(Path(temp_dir).joinpath('remote/subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
-        assert open(Path(temp_dir).joinpath('remote/subfolder/file3.txt')).read() == 'file3'
 
 
 def test_copy():
