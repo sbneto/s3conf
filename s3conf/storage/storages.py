@@ -62,7 +62,7 @@ class BaseStorage:
     def read_into_stream(self, path, stream=None):
         raise NotImplementedError()
 
-    def open(self, path, mode='r', encoding=None):
+    def open(self, path, mode='rb', encoding=None):
         logger.debug('Reading from %s', path)
         return self.FileCls(path, storage=self, mode=mode, encoding=encoding)
 
@@ -238,7 +238,7 @@ class LocalStorage(BaseStorage):
         if path.is_dir():
             for root, dirs, files in os.walk(path):
                 for file in files:
-                    yield md5s3(open(file, 'rb')), Path(root).joinpath(file).relative_to(path)
+                    yield md5s3(open(Path(root).joinpath(file), 'rb')), Path(root).joinpath(file).relative_to(path)
         else:
             # only yields if it exists
             if path.exists():
