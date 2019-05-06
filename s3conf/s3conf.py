@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from . import exceptions, config
-from .storages import EnvFile
+from .storages import EnvFile, partition_path
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -82,13 +82,11 @@ class S3Conf:
     def get_envfile(self, create=False):
         logger.info('Loading configs from {}'.format(self.settings.environment_file_path))
         remote_storage = self.settings.storages.storage(self.settings.environment_file_path)
-        if not list(remote_storage.list(self.settings.environment_file_path)) and create:
-            mode = 'w+'
-        else:
-            mode = 'r+'
-        return EnvFile.from_file(remote_storage.open(self.settings.environment_file_path, mode=mode))
+        _, _, path = partition_path(self.settings.environment_file_path)
+        envfile_exist = bool(list(remote_storage.list(path)))
+        mode = 'w+' if not envfile_exist and create else 'r+'
+        return EnvFile.from_file(remote_storage.open(path, mode=mode))
 
     def edit(self, create=False):
-        remote_storage = self.settings.storages.storage(self.settings.environment_file_path)
-        with remote_storage.open(self.settings.environment_file_path) as remote_stream:
-            EnvFile.from_file(remote_stream).edit(create=create)
+        with self.get_envfile(create=create) as envfile:
+            envfile.edit()
