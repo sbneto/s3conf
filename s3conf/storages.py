@@ -161,43 +161,13 @@ class BaseFile(File):
         )
         return result
 
-    def edit(self, create=False):
-        with NamedTemporaryFile(mode='rb+', buffering=0) as f:
-            data_to_edit = b''
-            try:
-                data_to_edit = self.read()
-            except FileDoesNotExist:
-                if not create:
-                    raise
-
-            f.write(data_to_edit)
-
-            original_md5 = self.md5(raise_if_not_exists=False)
-            edited_data = editor.edit(filename=f.name)
-            new_md5 = md5s3(io.BytesIO(edited_data))
-
-            if not edited_data and not original_md5:
-                logger.warning('Remote file does not exist and no input was provided. '
-                               'No attempt to write will be done.')
-            elif original_md5 != new_md5:
-                # this does not solve concurrency problems, but shrinks the
-                # race condition window to a very small period of time
-                if original_md5 == self.md5(raise_if_not_exists=False):
-                    self.write(edited_data)
-                    self.flush()
-                else:
-                    f_str = io.TextIOWrapper(io.BytesIO(edited_data))
-                    diff = self.diff(f_str)
-                    e = exceptions.LocalCopyOutdated(
-                        'Remote file was edited while editing local copy. Diff:\n\n{}'.format(''.join(diff))
-                    )
-                    # avoid io.TextIOWrapper closing the stream when being garbage collected
-                    # https://bugs.python.org/issue21363
-                    f_str.detach()
-                    raise e
-            else:
-                logger.warning('File not changed. Nothing to write.')
-
+    def edit(self):
+        self.seek(0)
+        original_data = self.read()
+        edited_data = editor.edit(contents=original_data)
+        self.seek(0)
+        self.truncate()
+        self.write(edited_data.decode())
 
 class EnvFile(BaseFile):
     @classmethod
