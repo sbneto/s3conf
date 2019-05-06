@@ -4,6 +4,7 @@ from configobj import ConfigObj
 from pathlib import Path
 
 from . import exceptions
+from .storages import StorageMapper
 
 
 logger = logging.getLogger(__name__)
@@ -72,23 +73,6 @@ class ConfigFileResolver:
         return list(self.config)
 
 
-def list_all_files(path):
-    if path.is_dir():
-        mapping = [Path(root).joinpath(name).resolve() for root, _, names in os.walk(path) for name in names]
-    else:
-        mapping = [path]
-    return mapping
-
-
-def expand_mapping(local_path, remote_path):
-    local_files = list_all_files(local_path)
-    if local_path.is_file():
-        local_path = local_path.parent
-        remote_path = os.path.dirname(remote_path)
-    mapping = {f: os.path.join(remote_path, f.relative_to(local_path)) for f in local_files}
-    return mapping
-
-
 class Settings:
     def __init__(self, section=None, config_file=None):
         if config_file:
@@ -121,6 +105,13 @@ class Settings:
 
         self._environment_file_path = None
         self._file_mappings = None
+        self._storages = None
+
+    @property
+    def storages(self):
+        if not self._storages:
+            self._storages = StorageMapper(self)
+        return self._storages
 
     @property
     def environment_file_path(self):
@@ -160,10 +151,6 @@ class Settings:
             relative_local_path = local_path.relative_to(self.root_folder)
             file_mappings[relative_local_path] = remote_path
         return ';'.join(f'{remote_path}:{local_path}' for local_path, remote_path in file_mappings.items())
-
-    def create_mapping(self, local_path):
-        suffix = local_path.relative_to(self.root_folder)
-        return expand_mapping(local_path, os.path.join(os.path.dirname(self.environment_file_path), 'files', suffix))
 
     def __getitem__(self, item):
         for resolver in self.resolvers:
