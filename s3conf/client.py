@@ -48,7 +48,7 @@ def main(ctx, edit, create):
             if ctx.invoked_subcommand is None:
                 settings = config.Settings()
                 logger.debug('Using config file %s', settings.config_file)
-                settings.storages.local.open(settings.config_file).edit(create=create)
+                settings.storages.storage(settings.config_file).open(settings.config_file).edit(create=create)
                 return
             else:
                 raise UsageError('Edit should not be called with a subcommand.')
