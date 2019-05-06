@@ -51,13 +51,12 @@ class S3Conf:
         if not force:
             md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
             hashes = json.load(open(md5_hash_file_name)) if md5_hash_file_name.exists() else {}
-
-        if not force:
             for local_path, remote_path in self.settings.file_mappings.items():
                 for local_file, remote_file in self.settings.storages.map(local_path, remote_path):
                     current_hash = hashes.get(str(local_file))
                     if current_hash:
-                        with self.settings.storages.remote.open(remote_file) as remote_stream:
+                        remote_storage = self.settings.storages.storage(remote_file)
+                        with remote_storage.open(remote_file) as remote_stream:
                             if current_hash != remote_stream.md5():
                                 raise_out_of_sync(local_file, remote_file)
                     else:
@@ -65,23 +64,27 @@ class S3Conf:
 
         hashes = {}
         for local_path, remote_path in self.settings.file_mappings.items():
-            hashes.update(self.settings.storages.upload(local_path, remote_path))
+            copy_hashes = self.settings.storages.copy(local_path, remote_path)
+            hashes.update({str(local_file): md5 for local_file, _, md5 in copy_hashes})
         md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
-        json.dump({str(k): v for k, v in hashes.items()}, open(md5_hash_file_name, 'w'), indent=4)
+        json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
     def pull(self):
         hashes = {}
         for local_path, remote_path in self.settings.file_mappings.items():
-            hashes.update(self.settings.storages.download(remote_path, local_path))
+            copy_hashes = self.settings.storages.copy(remote_path, local_path)
+            hashes.update({str(local_file): md5 for _, local_file, md5 in copy_hashes})
         md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
-        json.dump({str(k): v for k, v in hashes.items()}, open(md5_hash_file_name, 'w'), indent=4)
+        json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
         return hashes
 
     def get_envfile(self):
         logger.info('Loading configs from {}'.format(self.settings.environment_file_path))
-        return files.EnvFile.from_file(self.settings.storages.remote.open(self.settings.environment_file_path))
+        remote_storage = self.settings.storages.storage(self.settings.environment_file_path)
+        return files.EnvFile.from_file(remote_storage.open(self.settings.environment_file_path))
 
     def edit(self, create=False):
-        with self.settings.storages.remote.open(self.settings.environment_file_path) as remote_stream:
+        remote_storage = self.settings.storages.storage(self.settings.environment_file_path)
+        with remote_storage.open(self.settings.environment_file_path) as remote_stream:
             files.EnvFile.from_file(remote_stream).edit(create=create)
