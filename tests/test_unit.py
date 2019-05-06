@@ -1,4 +1,5 @@
 import os
+import io
 import logging
 import tempfile
 from shutil import rmtree
@@ -7,8 +8,10 @@ from pathlib import Path
 import pytest
 from botocore.exceptions import ClientError
 
+import s3conf.storages
 from s3conf import exceptions
-from s3conf import config, storages, s3conf
+from s3conf import config, s3conf
+from s3conf.storage import files, storages
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
 logging.getLogger('botocore').setLevel(logging.ERROR)
@@ -45,8 +48,7 @@ def _setup_basic_test(temp_dir):
 
     try:
         settings = config.Settings(section='test')
-        s3 = s3conf.S3Conf(settings=settings)
-        bucket = s3.storage.s3.Bucket('s3conf')
+        bucket = settings.storages.remote.s3.Bucket('s3conf')
         bucket.objects.all().delete()
         bucket.delete()
     except ClientError as e:
@@ -55,15 +57,29 @@ def _setup_basic_test(temp_dir):
     return config_file, default_config_file
 
 
-def test_expand_mapping():
+def test_etag():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file, _ = _setup_basic_test(temp_dir)
+
+        settings = config.Settings(section='test')
+        s3 = s3conf.S3Conf(settings=settings)
+
+        local_path = Path(temp_dir).joinpath('tests/path1/file1.txt')
+        s3.upload(local_path, 's3://s3conf/remote/file1.txt')
+        file_list = list(s3.storage.list('s3://s3conf/remote/file1.txt'))
+        file = s3conf.storages.get_storage(local_path)(settings).open(local_path)
+        assert files.md5s3(io.BytesIO(file.read())) == file_list[0][0]
+
+
+def test_mapping():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
-        mapping = settings.create_mapping(settings.config_file)
+        mapping = settings.mapper.map(settings.config_file, 's3://s3conf/files/s3conf.ini')
         assert mapping == {
             settings.config_file: 's3://s3conf/files/s3conf.ini',
         }
-        mapping = settings.create_mapping(settings.root_folder.joinpath('subfolder'))
+        mapping = settings.mapper.map(settings.root_folder.joinpath('subfolder'), 's3://s3conf/files/subfolder')
         assert mapping == {
             settings.root_folder.joinpath('subfolder/file2.txt'): 's3://s3conf/files/subfolder/file2.txt',
             settings.root_folder.joinpath('subfolder/file3.txt'): 's3://s3conf/files/subfolder/file3.txt',
@@ -73,12 +89,11 @@ def test_expand_mapping():
 def test_file():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
-        storage = storages.LocalStorage(settings=config.Settings(section='test'))
-        test_file = Path(temp_dir).joinpath('test_file.txt')
-        with storage.open(test_file) as f:
+        settings = config.Settings(section='test')
+        with settings.storages.remote.open('/test/test.txt', mode='w') as f:
             f.write('test')
-            f.flush()
-            assert f.read() == b'test'
+        with settings.storages.remote.open('/test/test.txt') as f:
+            assert f.read() == 'test'
 
 
 def test_add():
@@ -167,8 +182,8 @@ def test_upload_download_files():
         settings = config.Settings(section='test')
         s3 = s3conf.S3Conf(settings=settings)
 
-        s3.upload(settings.root_folder, 's3://tests/remote/')
-        s3.download('s3://tests/remote/', Path(temp_dir).joinpath('remote'))
+        s3.settings.storages.upload(settings.root_folder, 's3://tests/remote')
+        s3.settings.storages.download('s3://tests/remote', Path(temp_dir).joinpath('remote'))
 
         assert open(Path(temp_dir).joinpath('remote/file1.txt')).read() == 'file1'
         assert open(Path(temp_dir).joinpath('remote/subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
