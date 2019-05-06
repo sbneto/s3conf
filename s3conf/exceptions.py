@@ -1,7 +1,5 @@
 from click.exceptions import UsageError
 
-from . import config
-
 
 class EnvfilePathNotDefinedUsageError(UsageError):
     def __init__(self, message=None, *args, **kwargs):
@@ -12,11 +10,12 @@ class EnvfilePathNotDefinedUsageError(UsageError):
 
         error_msg = 'Set the environemnt variable S3CONF or provide a section from an existing config file.'
         try:
+            from . import config
             sections_detected = ''
             settings = config.Settings()
             for section in config.ConfigFileResolver(settings.config_file).sections():
                 sections_detected += '    {}\n'.format(section)
-        except FileNotFoundError:
+        except (FileNotFoundError, ImportError):
             pass
         if sections_detected:
             sections_detected = '\n\nThe following sections were detected:\n\n' + sections_detected
@@ -34,9 +33,5 @@ class LocalCopyOutdated(UsageError):
 
 
 class EnvfilePathNotDefinedError(Exception):
-    pass
-
-
-class FileDoesNotExist(FileNotFoundError):
     pass
 
