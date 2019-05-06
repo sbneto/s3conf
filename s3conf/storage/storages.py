@@ -149,9 +149,9 @@ class S3Storage(BaseStorage):
         path = path.rstrip('/')
         try:
             for obj in bucket.objects.filter(Prefix=path):
-                relative_path = strip_prefix(obj.key, path)
-                if relative_path.startswith('/') or not relative_path:
-                    yield obj.e_tag, relative_path.lstrip('/')
+                # relative_path = strip_prefix(obj.key, path)
+                if not obj.key.endswith('/'):
+                    yield obj.e_tag, obj.key
         except ClientError as e:
             if e.response['Error']['Code'] == 'NoSuchBucket':
                 logger.warning('Bucket does not exist, list() returning empty.')
@@ -204,9 +204,8 @@ class GCStorage(BaseStorage):
         bucket = self.gcs.get_bucket(self.bucket)
         path = path.rstrip('/')
         for obj in bucket.list_blobs(prefix=path):
-            relative_path = strip_prefix(obj.name, path)
-            if relative_path.startswith('/') or not relative_path:
-                yield obj.etag, relative_path.lstrip('/')
+            if not obj.name.endswith('/'):
+                yield obj.etag, obj.name
 
 
 class LocalStorage(BaseStorage):
@@ -238,10 +237,10 @@ class LocalStorage(BaseStorage):
         if path.is_dir():
             for root, dirs, files in os.walk(path):
                 for file in files:
-                    yield md5s3(open(Path(root).joinpath(file), 'rb')), Path(root).joinpath(file).relative_to(path)
+                    yield md5s3(open(Path(root).joinpath(file), 'rb')), Path(root).joinpath(file)
         else:
             # only yields if it exists
             if path.exists():
                 # the relative path of a file to itself is empty
                 # same behavior as in boto3
-                yield md5s3(open(path, 'rb')), ''
+                yield md5s3(open(path, 'rb')), str(path)
