@@ -2,6 +2,8 @@ import functools
 import logging
 from tempfile import NamedTemporaryFile
 
+from . import exceptions
+
 
 logger = logging.getLogger(__name__)
 
@@ -16,14 +18,16 @@ class File:
         self.encoding = encoding
         self._buffer = None
         self._file = None
-        self.synced = False
 
     def _sync_with_storage(self):
         if 'w' not in self.mode:
-            self._buffer.truncate()
-            self._buffer.seek(0)
-            self.storage.read_into_stream(self.name, self._buffer)
-        self.synced = True
+            try:
+                self._buffer.seek(0)
+                self._buffer.truncate()
+                self.storage.read_into_stream(self.name, self._buffer)
+            except exceptions.FileDoesNotExist:
+                self.file.close()
+                raise
 
     # IOBase
     def flush(self) -> None:
