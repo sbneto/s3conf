@@ -82,6 +82,7 @@ class Settings:
             self.root_folder = _lookup_root_folder().resolve()
             self.config_file = self.root_folder.joinpath(f'{CONFIG_NAME}.ini')
         self.cache_dir = self.root_folder.joinpath(f'.{CONFIG_NAME}')
+        self.hash_file = self.cache_dir.joinpath('md5')
         self.default_config_file = self.cache_dir.joinpath('default.ini')
         self.section = section
         logger.debug('Settings paths:\n%s\n%s\n%s\n%s',
