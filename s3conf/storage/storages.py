@@ -135,11 +135,11 @@ class S3Storage(BaseStorage):
         bucket = get_s3_bucket(self, self.bucket)
         # boto3 closes the handler, creating a copy
         # https://github.com/boto/s3transfer/issues/80
-        file_to_close = TemporaryFile()
-        f.seek(0)
-        copyfileobj(f, file_to_close)
-        file_to_close.seek(0)
-        bucket.upload_fileobj(file_to_close, path)
+        with TemporaryFile() as file_to_close:
+            f.seek(0)
+            copyfileobj(f, file_to_close)
+            file_to_close.seek(0)
+            bucket.upload_fileobj(file_to_close, path)
 
     def write(self, f, path):
         logger.debug('Writing to %s', path)
@@ -155,7 +155,6 @@ class S3Storage(BaseStorage):
         path = path.rstrip('/')
         try:
             for obj in bucket.objects.filter(Prefix=path):
-                # relative_path = strip_prefix(obj.key, path)
                 if not obj.key.endswith('/'):
                     yield obj.e_tag, obj.key
         except ClientError as e:
@@ -252,6 +251,4 @@ class LocalStorage(BaseStorage):
         else:
             # only yields if it exists
             if path.exists():
-                # the relative path of a file to itself is empty
-                # same behavior as in boto3
                 yield md5s3(open(path, 'rb')), str(path)
