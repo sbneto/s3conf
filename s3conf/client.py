@@ -33,7 +33,7 @@ class SectionArgument(click.Argument):
 @click.pass_context
 # this sets the log level for this app only
 @click_log.simple_verbosity_option('s3conf')
-def main(ctx, edit, create):
+def main(ctx, edit):
     """
     Simple command line tool to help manage environment variables stored in a S3-like system. Facilitates editing text
     files remotely stored, as well as downloading and uploading files.
@@ -47,8 +47,9 @@ def main(ctx, edit, create):
         if edit:
             if ctx.invoked_subcommand is None:
                 settings = config.Settings()
+                conf = s3conf.S3Conf(settings=settings)
                 logger.debug('Using config file %s', settings.config_file)
-                storage = settings.storages.storage(settings.config_file)
+                storage = conf.storages.storage(settings.config_file)
                 with storage.open(settings.config_file, 'r+') as config_file:
                     config_file.edit()
                 return
@@ -58,7 +59,7 @@ def main(ctx, edit, create):
         if ctx.invoked_subcommand is None:
             click.echo(main.get_help(ctx))
     except FileDoesNotExist as e:
-        raise UsageError('The file {} does not exist. Try "-c" option if you want to create it.'.format(str(e)))
+        raise UsageError('The file {} does not exist. Try the "init" command if you want to create it.'.format(str(e)))
 
 
 @main.command('env')
