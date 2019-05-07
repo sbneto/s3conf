@@ -5,15 +5,13 @@ import io
 import difflib
 from shutil import copyfileobj
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from functools import lru_cache
 
 import editor
 
-from .storage.storages import S3Storage, GCStorage, LocalStorage, md5s3
+from .storage.storages import S3Storage, GCStorage, LocalStorage
 from .storage.files import File
 from .storage.exceptions import FileDoesNotExist
-from . import exceptions
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
