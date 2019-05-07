@@ -48,7 +48,9 @@ def main(ctx, edit, create):
             if ctx.invoked_subcommand is None:
                 settings = config.Settings()
                 logger.debug('Using config file %s', settings.config_file)
-                settings.storages.storage(settings.config_file).open(settings.config_file).edit(create=create)
+                storage = settings.storages.storage(settings.config_file)
+                with storage.open(settings.config_file, 'r+') as config_file:
+                    config_file.edit()
                 return
             else:
                 raise UsageError('Edit should not be called with a subcommand.')
@@ -244,8 +246,8 @@ def set_variable(section, value, create):
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(settings=settings)
 
-        with conf.get_envfile() as env_vars:
-            env_vars.set(value, create=create)
+        with conf.get_envfile(create=create) as env_vars:
+            env_vars.set(value)
     except EnvfilePathNotDefinedError:
         raise EnvfilePathNotDefinedUsageError()
 
