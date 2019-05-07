@@ -56,8 +56,9 @@ class S3Conf:
             for etag, local_file, remote_file in self.settings.storages.map(local_path, remote_path):
                 local_hash = local_hashes.get(str(local_file))
                 remote_hash = remote_hashes.get(str(remote_file))
-                if local_hash and local_hash != remote_hash:
-                    raise_out_of_sync(local_file, remote_file)
+                if local_hash:
+                    if local_hash != remote_hash:
+                        raise_out_of_sync(local_file, remote_file)
                 else:
                     logger.warning('New mapped file detected: %s', local_file)
 
