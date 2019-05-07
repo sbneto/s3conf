@@ -22,7 +22,7 @@ except ImportError:
 try:
     from google.cloud import storage
 
-    EXTRAS.append(boto3, storage)
+    EXTRAS.append(storage)
 except ImportError:
     pass
 
