@@ -4,7 +4,6 @@ from configobj import ConfigObj
 from pathlib import Path
 
 from . import exceptions
-from .storages import StorageMapper
 
 
 logger = logging.getLogger(__name__)
@@ -106,13 +105,6 @@ class Settings:
 
         self._environment_file_path = None
         self._file_mappings = None
-        self._storages = None
-
-    @property
-    def storages(self):
-        if not self._storages:
-            self._storages = StorageMapper(self)
-        return self._storages
 
     @property
     def environment_file_path(self):
