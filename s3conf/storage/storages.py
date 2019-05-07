@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryFile
 from shutil import copyfileobj
+from functools import lru_cache
 
 import boto3
 from botocore.exceptions import ClientError
@@ -73,6 +74,11 @@ class BaseStorage:
         raise NotImplementedError()
 
 
+@lru_cache()
+def get_s3_bucket(_storage, bucket):
+    return _storage.s3.Bucket(bucket)
+
+
 class S3Storage(BaseStorage):
     def __init__(self,
                  aws_access_key_id=None,
@@ -114,7 +120,7 @@ class S3Storage(BaseStorage):
     def read_into_stream(self, path, stream=None):
         try:
             stream = stream or BytesIO()
-            bucket = self.s3.Bucket(self.bucket)
+            bucket = get_s3_bucket(self, self.bucket)
             bucket.download_fileobj(path, stream)
             stream.seek(0)
             return stream
@@ -126,7 +132,7 @@ class S3Storage(BaseStorage):
                 raise
 
     def _write(self, f, path):
-        bucket = self.s3.Bucket(self.bucket)
+        bucket = get_s3_bucket(self, self.bucket)
         # boto3 closes the handler, creating a copy
         # https://github.com/boto/s3transfer/issues/80
         file_to_close = TemporaryFile()
@@ -145,7 +151,7 @@ class S3Storage(BaseStorage):
 
     def list(self, path):
         logger.debug('Listing %s', path)
-        bucket = self.s3.Bucket(self.bucket)
+        bucket = get_s3_bucket(self, self.bucket)
         path = path.rstrip('/')
         try:
             for obj in bucket.objects.filter(Prefix=path):
@@ -157,6 +163,11 @@ class S3Storage(BaseStorage):
                 logger.warning('Bucket does not exist, list() returning empty.')
             else:
                 raise
+
+
+@lru_cache()
+def get_gcs_bucket(_storage, bucket):
+    return _storage.gcs.Bucket(bucket)
 
 
 class GCStorage(BaseStorage):
@@ -179,14 +190,14 @@ class GCStorage(BaseStorage):
 
     def read_into_stream(self, path, stream=None):
         stream = stream or BytesIO()
-        bucket = self.gcs.get_bucket(self.bucket)
+        bucket = get_gcs_bucket(self, self.bucket)
         blob = bucket.blob(path)
         blob.download_to_file(stream)
         stream.seek(0)
         return stream
 
     def _write(self, f, path):
-        bucket = self.gcs.get_bucket(self.bucket)
+        bucket = get_gcs_bucket(self, self.bucket)
         blob = bucket.blob(path)
         f.seek(0)
         blob.upload_from_file(f, path)
@@ -201,7 +212,7 @@ class GCStorage(BaseStorage):
 
     def list(self, path):
         logger.debug('Listing %s', path)
-        bucket = self.gcs.get_bucket(self.bucket)
+        bucket = get_gcs_bucket(self, self.bucket)
         path = path.rstrip('/')
         for obj in bucket.list_blobs(prefix=path):
             if not obj.name.endswith('/'):
