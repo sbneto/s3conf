@@ -7,13 +7,27 @@ from tempfile import TemporaryFile
 from shutil import copyfileobj
 from functools import lru_cache
 
-import boto3
-from botocore.exceptions import ClientError
-from google.cloud import storage
-
 from .files import File
 from . import exceptions
 
+EXTRAS = []
+
+try:
+    import boto3
+    from botocore.exceptions import ClientError
+    EXTRAS.append(boto3)
+except ImportError:
+    pass
+
+try:
+    from google.cloud import storage
+
+    EXTRAS.append(boto3, storage)
+except ImportError:
+    pass
+
+if not EXTRAS:
+    raise ImportError('At least one extra from [boto3, google-cloud-storage] must be installed.')
 
 logger = logging.getLogger(__name__)
 

@@ -67,15 +67,22 @@ setup(
     packages=get_packages(package),
     package_data=get_package_data(package),
     install_requires=[
-        'boto3>=1.4.4',
         'click>=6.7',
         'python-editor>=1.0.3',
         'click-log>=0.2.1',
         'configobj>=5.0.6'
     ],
-    python_requires='~=3.5',
+    python_requires='>=3.6',
     setup_requires=[],
     tests_require=['pytest', 'pytest-cov'],
+    extras_require={
+        'boto3': [
+            'boto3>=1.4.4',
+        ],
+        'google-cloud-storage': [
+            'google-cloud-storage>=1.15.0',
+        ],
+    },
     classifiers=[
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
