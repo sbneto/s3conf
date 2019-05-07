@@ -9,7 +9,7 @@ def get_version(repo_path=None):
     repo_path = os.path.abspath(repo_path or os.path.dirname(os.path.dirname(__file__)))
     if os.path.isdir(os.path.join(repo_path, '.git')):
         # Get the version using "git describe".
-        cmd = 'git describe --tags --match [0-9]*'.split()
+        cmd = 'git describe --always --tags --match [0-9]*'.split()
         try:
             version = subprocess.check_output(cmd, cwd=repo_path).decode().strip()
         except subprocess.CalledProcessError:
