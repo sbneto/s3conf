@@ -117,19 +117,26 @@ class StorageMapper:
             for file_path, etag in files.items():
                 yield etag, file_path, os.path.join(target_path, os.path.relpath(file_path, source_path))
 
-    def copy(self, source_path, target_path, force=False):
+    def prepare_copy_list(self, source_path, target_path, force=False):
         hashes = []
-        source = self.storage(source_path)
+        to_copy = []
         target = self.storage(target_path)
         _, _, target_path = partition_path(target_path)
         if not force:
             target_hashes = {os.path.join(target_path, file_path): etag for etag, file_path in target.list(target_path)}
         for etag, source_file, target_file in self.map(source_path, target_path):
-            should_copy = force or target_file not in target_hashes or target_hashes[target_file] != etag
-            if should_copy:
-                with source.open(source_file) as source_stream, target.open(target_file, 'wb') as target_stream:
-                    copyfileobj(source_stream, target_stream)
+            if force or target_file not in target_hashes or target_hashes[target_file] != etag:
+                to_copy.append((source_file, target_file))
             hashes.append((source_file, target_file, etag))
+        return hashes, to_copy
+
+    def copy(self, source_path, target_path, force=False):
+        hashes, to_copy = self.prepare_copy_list(source_path, target_path, force)
+        source = self.storage(source_path)
+        target = self.storage(target_path)
+        for source_file, target_file in to_copy:
+            with source.open(source_file) as source_stream, target.open(target_file, 'wb') as target_stream:
+                copyfileobj(source_stream, target_stream)
         return hashes
 
 
@@ -168,6 +175,7 @@ class BaseFile(File):
         self.seek(0)
         self.truncate()
         self.write(edited_data.decode())
+
 
 class EnvFile(BaseFile):
     @classmethod
