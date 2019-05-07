@@ -26,10 +26,6 @@ class SectionArgument(click.Argument):
 @click.group(invoke_without_command=True)
 @click.version_option(version=__version__)
 @click.option('--edit', '-e', is_flag=True)
-@click.option('--create',
-              '-c',
-              is_flag=True,
-              help='When trying to edit a file, create it if it does not exist.')
 @click.pass_context
 # this sets the log level for this app only
 @click_log.simple_verbosity_option('s3conf')
