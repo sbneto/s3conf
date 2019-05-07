@@ -3,14 +3,8 @@
 docker run \
     -d \
     --rm \
-    -e LOCALSTACK_HOSTNAME="localhost" \
-    -e SERVICES="s3" \
-    -p 8080:8080 \
-    -p 443:443 \
-    -p 4572:4572 \
-    -p 4590-4593:4590-4593 \
-    -v "/tmp/localstack:/tmp/localstack" \
-    -v "/var/run/docker.sock:/var/run/docker.sock" \
-    -e DOCKER_HOST="unix:///var/run/docker.sock" \
-    -e HOST_TMP_FOLDER="/tmp/localstack" \
-    "localstack/localstack:0.8.7"
+    -e MINIO_ACCESS_KEY=testtest \
+    -e MINIO_SECRET_KEY=testtest \
+    -p 9000:9000 \
+    "minio/minio" \
+    server /data
