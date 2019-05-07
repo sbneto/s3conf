@@ -194,22 +194,18 @@ class EnvFile(BaseFile):
             pass
         return env_dict
 
-    def set(self, value, create=False):
+    def set(self, value):
         new_key, new_value = parse_env_var(value)
         new_lines = []
         value_set = False
-        try:
-            self.seek(0)
-            for line in self.read().splitlines():
-                key, value = parse_env_var(line)
-                if key == new_key:
-                    new_lines.append('{}={}'.format(new_key, new_value))
-                    value_set = True
-                else:
-                    new_lines.append(line)
-        except FileNotFoundError:
-            if not create:
-                raise
+        self.seek(0)
+        for line in self.read().splitlines():
+            key, value = parse_env_var(line)
+            if key == new_key:
+                new_lines.append('{}={}'.format(new_key, new_value))
+                value_set = True
+            else:
+                new_lines.append(line)
         if not value_set:
             new_lines.append('{}={}'.format(new_key, new_value))
         self.seek(0)
