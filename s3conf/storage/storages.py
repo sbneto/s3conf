@@ -55,17 +55,17 @@ def strip_prefix(text, prefix):
 
 
 class BaseStorage:
-    def __init__(self, file_cls=None):
-        if file_cls and not issubclass(file_cls, File):
+    def __init__(self, file_class=None):
+        if file_class and not issubclass(file_class, File):
             raise TypeError(f'FileCls must inherit from File')
-        self.FileCls = file_cls or File
+        self.file_class = file_class or File
 
     def read_into_stream(self, path, stream=None):
         raise NotImplementedError()
 
     def open(self, path, mode='rb', encoding=None):
         logger.debug('Reading from %s', path)
-        return self.FileCls(path, storage=self, mode=mode, encoding=encoding)
+        return self.file_class(path, storage=self, mode=mode, encoding=encoding)
 
     def write(self, f, path):
         raise NotImplementedError()
