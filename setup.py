@@ -39,9 +39,7 @@ def get_package_data(package):
     return {package: filepaths}
 
 
-with open('s3conf/version.py') as f:
-    exec(f.read())
-version = get_version(repo_path=os.path.dirname(__file__))
+version = '0.9.0'
 
 if sys.argv[-1] == 'publish':
     if os.system("pip freeze | grep wheel"):
