@@ -148,7 +148,7 @@ class S3Storage(BaseStorage):
 
 @lru_cache()
 def get_gcs_bucket(_storage, bucket):
-    return _storage.gcs.Bucket(bucket)
+    return _storage.gcs.get_bucket(bucket)
 
 
 class GCStorage(BaseStorage):
