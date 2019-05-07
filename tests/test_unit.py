@@ -24,9 +24,9 @@ def _setup_basic_test(temp_dir):
     config_file.parent.mkdir(parents=True, exist_ok=True)
     open(default_config_file, 'w').write(
         '[DEFAULT]\n'
-        'AWS_S3_ENDPOINT_URL=http://localhost:4572\n'
-        'AWS_ACCESS_KEY_ID=key\n'
-        'AWS_SECRET_ACCESS_KEY=secret\n'
+        'AWS_S3_ENDPOINT_URL=http://localhost:9000\n'
+        'AWS_ACCESS_KEY_ID=testtest\n'
+        'AWS_SECRET_ACCESS_KEY=testtest\n'
     )
     open(config_file, 'w').write(
         '[test]\n'
@@ -140,7 +140,7 @@ def test_push_pull_files():
         settings = config.Settings(section='test')
         s3 = s3conf.S3Conf(settings=settings)
 
-        hashes = s3.push(force=True)
+        hashes = s3.push()
 
         assert hashes == {
             str(settings.root_folder.joinpath('file1.txt')): '"826e8142e6baabe8af779f5f490cf5f5"',
