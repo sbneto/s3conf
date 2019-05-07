@@ -47,27 +47,28 @@ class S3Conf:
     def __init__(self, settings=None):
         self.settings = settings or config.Settings()
 
+    def check_remote_changes(self):
+        local_hashes = json.load(open(self.settings.hash_file)) if self.settings.hash_file.exists() else {}
+        for local_path, remote_path in self.settings.file_mappings.items():
+            remote = self.settings.storages.storage(remote_path)
+            _, _, parsed_remote_path = partition_path(remote_path)
+            remote_hashes = {file_path: etag for etag, file_path in remote.list(parsed_remote_path)}
+            for etag, local_file, remote_file in self.settings.storages.map(local_path, remote_path):
+                local_hash = local_hashes.get(str(local_file))
+                remote_hash = remote_hashes.get(str(remote_file))
+                if local_hash and local_hash != remote_hash:
+                    raise_out_of_sync(local_file, remote_file)
+                else:
+                    logger.warning('New mapped file detected: %s', local_file)
+
     def push(self, force=False):
         if not force:
-            md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
-            hashes = json.load(open(md5_hash_file_name)) if md5_hash_file_name.exists() else {}
-            for local_path, remote_path in self.settings.file_mappings.items():
-                for local_file, remote_file in self.settings.storages.map(local_path, remote_path):
-                    current_hash = hashes.get(str(local_file))
-                    if current_hash:
-                        remote_storage = self.settings.storages.storage(remote_file)
-                        with remote_storage.open(remote_file) as remote_stream:
-                            if current_hash != remote_stream.md5():
-                                raise_out_of_sync(local_file, remote_file)
-                    else:
-                        logger.warning('New mapped file detected: %s', local_file)
-
+            self.check_remote_changes()
         hashes = {}
         for local_path, remote_path in self.settings.file_mappings.items():
             copy_hashes = self.settings.storages.copy(local_path, remote_path)
             hashes.update({str(local_file): md5 for local_file, _, md5 in copy_hashes})
-        md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
-        json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
+        json.dump(hashes, open(self.settings.hash_file, 'w'), indent=4)
         return hashes
 
     def pull(self):
@@ -75,8 +76,7 @@ class S3Conf:
         for local_path, remote_path in self.settings.file_mappings.items():
             copy_hashes = self.settings.storages.copy(remote_path, local_path)
             hashes.update({str(local_file): md5 for _, local_file, md5 in copy_hashes})
-        md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
-        json.dump(hashes, open(md5_hash_file_name, 'w'), indent=4)
+        json.dump(hashes, open(self.settings.hash_file, 'w'), indent=4)
         return hashes
 
     def get_envfile(self, create=False):
