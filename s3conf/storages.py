@@ -1,7 +1,6 @@
 import os
 import codecs
 import logging
-import io
 import difflib
 from shutil import copyfileobj
 from pathlib import Path
@@ -50,7 +49,7 @@ def partition_path(path):
     return protocol, bucket, path
 
 
-def get_s3_storage(settings, file_cls, bucket):
+def get_s3_storage(settings, file_class, bucket):
     return S3Storage(
         aws_access_key_id=settings.get('S3CONF_ACCESS_KEY_ID') or settings.get('AWS_ACCESS_KEY_ID'),
         aws_secret_access_key=settings.get('S3CONF_SECRET_ACCESS_KEY') or settings.get('AWS_SECRET_ACCESS_KEY'),
@@ -58,16 +57,16 @@ def get_s3_storage(settings, file_cls, bucket):
         region_name=settings.get('S3CONF_S3_REGION_NAME') or settings.get('AWS_S3_REGION_NAME'),
         use_ssl=settings.get('S3CONF_S3_USE_SSL') or settings.get('AWS_S3_USE_SSL', True),
         endpoint_url=settings.get('S3CONF_S3_ENDPOINT_URL') or settings.get('AWS_S3_ENDPOINT_URL'),
-        file_cls=file_cls,
+        file_class=file_class,
         bucket=bucket,
     )
 
 
-def get_gs_storage(settings, file_cls, bucket):
+def get_gs_storage(settings, file_class, bucket):
     return GCStorage(
         credential_file=settings.get('S3CONF_APPLICATION_CREDENTIALS') or settings.get(
             'GOOGLE_APPLICATION_CREDENTIALS'),
-        file_cls=file_cls,
+        file_class=file_class,
         bucket=bucket,
     )
 
@@ -86,10 +85,10 @@ def _make_storage(settings, protocol, bucket):
         storage = {
             's3': get_s3_storage(settings, BaseFile, bucket),
             'gs': get_gs_storage(settings, BaseFile, bucket),
-            'file': LocalStorage(file_cls=BaseFile, root=settings.root_folder),
+            'file': LocalStorage(file_class=BaseFile, root=settings.root_folder),
         }[protocol]
     except KeyError:
-        storage = LocalStorage(file_cls=BaseFile, root=settings.root_folder)
+        storage = LocalStorage(file_class=BaseFile, root=settings.root_folder)
     logger.debug('Using %s storage', storage)
     return storage
 
