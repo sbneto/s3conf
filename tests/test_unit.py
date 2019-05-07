@@ -277,16 +277,3 @@ def test_set_unset_env_var():
 
             env_vars = env_file.as_dict()
             assert 'TEST' not in env_vars
-
-
-# def test_edit():
-#     with tempfile.TemporaryDirectory() as temp_dir:
-#         config_file, _ = _setup_basic_test(temp_dir)
-#         settings = config.Settings(section='test')
-#         s3 = s3conf.S3Conf(settings=settings)
-#
-#         with s3.get_envfile(create=True) as env_file:
-#             env_file.set('TEST=123')
-#
-#         with s3.get_envfile() as env_file:
-#             env_file.edit()
