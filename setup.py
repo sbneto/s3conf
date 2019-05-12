@@ -74,10 +74,10 @@ setup(
     setup_requires=[],
     tests_require=['pytest', 'pytest-cov'],
     extras_require={
-        'boto3': [
+        'aws': [
             'boto3>=1.4.4',
         ],
-        'google-cloud-storage': [
+        'gcp': [
             'google-cloud-storage>=1.15.0',
         ],
     },
