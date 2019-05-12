@@ -54,6 +54,13 @@ class S3Conf:
             self._storages = StorageMapper(self.settings)
         return self._storages
 
+    def verify_cache(self):
+        self.settings.cache_dir.mkdir(parents=True, exist_ok=True)
+        default_config_file = config.ConfigFileResolver(self.settings.default_config_file, section='DEFAULT')
+        default_config_file.save()
+        gitignore_file_path = self.settings.cache_dir.joinpath('.gitignore')
+        open(gitignore_file_path, 'w').write('*\n')
+
     def check_remote_changes(self):
         local_hashes = json.load(open(self.settings.hash_file)) if self.settings.hash_file.exists() else {}
         for local_path, remote_path in self.settings.file_mappings.items():
@@ -76,6 +83,7 @@ class S3Conf:
         for local_path, remote_path in self.settings.file_mappings.items():
             copy_hashes = self.storages.copy(local_path, remote_path)
             hashes.update({str(local_file): md5 for local_file, _, md5 in copy_hashes})
+        self.verify_cache()
         json.dump(hashes, open(self.settings.hash_file, 'w'), indent=4)
         return hashes
 
@@ -84,6 +92,7 @@ class S3Conf:
         for local_path, remote_path in self.settings.file_mappings.items():
             copy_hashes = self.storages.copy(remote_path, local_path)
             hashes.update({str(local_file): md5 for _, local_file, md5 in copy_hashes})
+        self.verify_cache()
         json.dump(hashes, open(self.settings.hash_file, 'w'), indent=4)
         return hashes
 
