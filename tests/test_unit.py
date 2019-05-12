@@ -24,9 +24,9 @@ def _setup_basic_test(temp_dir):
     config_file.parent.mkdir(parents=True, exist_ok=True)
     open(default_config_file, 'w').write(
         '[DEFAULT]\n'
-        'AWS_S3_ENDPOINT_URL=http://localhost:4572\n'
-        'AWS_ACCESS_KEY_ID=key\n'
-        'AWS_SECRET_ACCESS_KEY=secret\n'
+        'AWS_S3_ENDPOINT_URL=http://localhost:9000\n'
+        'AWS_ACCESS_KEY_ID=testtest\n'
+        'AWS_SECRET_ACCESS_KEY=testtest\n'
     )
     open(config_file, 'w').write(
         '[test]\n'
@@ -46,7 +46,8 @@ def _setup_basic_test(temp_dir):
 
     try:
         settings = config.Settings(section='test')
-        bucket = settings.storages.storage(settings.environment_file_path).s3.Bucket('s3conf')
+        conf = s3conf.S3Conf(settings=settings)
+        bucket = conf.storages.storage(settings.environment_file_path).s3.Bucket('s3conf')
         bucket.objects.all().delete()
         bucket.delete()
     except ClientError as e:
@@ -60,12 +61,13 @@ def test_etag():
         config_file, _ = _setup_basic_test(temp_dir)
 
         settings = config.Settings(section='test')
+        conf = s3conf.S3Conf(settings=settings)
 
         local_path = Path(temp_dir).joinpath('tests/path1/file1.txt')
-        settings.storages.copy(local_path, 's3://s3conf/remote/file1.txt')
-        storage = settings.storages.storage('s3://s3conf/remote/file1.txt')
+        conf.storages.copy(local_path, 's3://s3conf/remote/file1.txt')
+        storage = conf.storages.storage('s3://s3conf/remote/file1.txt')
         file_list = list(storage.list('remote/file1.txt'))
-        file = settings.storages.storage(local_path).open(local_path)
+        file = conf.storages.storage(local_path).open(local_path)
         assert file.md5() == file_list[0][0]
 
 
@@ -73,11 +75,12 @@ def test_mapping():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
-        mapping = list(settings.storages.map(settings.config_file, 's3://s3conf/files/s3conf.ini'))
+        conf = s3conf.S3Conf(settings=settings)
+        mapping = list(conf.storages.map(settings.config_file, 's3://s3conf/files/s3conf.ini'))
         assert mapping == [
             ('"d219ee6bd8f9e9ddda91cf51f263a883"', str(settings.config_file), 'files/s3conf.ini'),
         ]
-        mapping = list(settings.storages.map(settings.root_folder.joinpath('subfolder'), 's3://s3conf/files/subfolder'))
+        mapping = list(conf.storages.map(settings.root_folder.joinpath('subfolder'), 's3://s3conf/files/subfolder'))
         assert mapping == [
             (
                 '"c269c739c5226abab0a4fce7df301155-2"',
@@ -96,9 +99,10 @@ def test_file():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
-        with settings.storages.storage().open('test/test.txt', 'w') as f:
+        conf = s3conf.S3Conf(settings=settings)
+        with conf.storages.storage().open('test/test.txt', 'w') as f:
             f.write('test')
-        with settings.storages.storage().open('test/test.txt', 'r') as f:
+        with conf.storages.storage().open('test/test.txt', 'r') as f:
             assert f.read() == 'test'
 
 
@@ -117,7 +121,8 @@ def test_diff():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
-        storage = settings.storages.storage()
+        conf = s3conf.S3Conf(settings=settings)
+        storage = conf.storages.storage()
         with storage.open(Path(temp_dir).joinpath('test.txt'), 'w') as f:
             f.write('test1\ntest2\ntest3\n')
         with storage.open(Path(temp_dir).joinpath('test.txt'), 'r') as f, \
@@ -140,13 +145,15 @@ def test_push_pull_files():
         settings = config.Settings(section='test')
         s3 = s3conf.S3Conf(settings=settings)
 
-        hashes = s3.push(force=True)
+        hashes = s3.push()
 
         assert hashes == {
             str(settings.root_folder.joinpath('file1.txt')): '"826e8142e6baabe8af779f5f490cf5f5"',
             str(settings.root_folder.joinpath('subfolder/file2.txt')): '"c269c739c5226abab0a4fce7df301155-2"',
             str(settings.root_folder.joinpath('subfolder/file3.txt')): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
+
+        s3.push()
 
         os.remove(Path(settings.root_folder).joinpath('file1.txt'))
         rmtree(Path(settings.root_folder).joinpath('subfolder'))
@@ -159,18 +166,16 @@ def test_push_pull_files():
             str(settings.root_folder.joinpath('subfolder/file3.txt')): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
-        # # must fail unless forced
-        # with pytest.raises(exceptions.LocalCopyOutdated):
-        #     s3.upsync(local_root, map_files=True)
 
 def test_copy():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file, _ = _setup_basic_test(temp_dir)
 
         settings = config.Settings(section='test')
-        settings.storages.copy(settings.root_folder, 's3://s3conf/remote')
-        settings.storages.copy(settings.root_folder, 's3://s3conf/remote')
-        settings.storages.copy('s3://s3conf/remote', Path(temp_dir).joinpath('remote'))
+        conf = s3conf.S3Conf(settings=settings)
+        conf.storages.copy(settings.root_folder, 's3://s3conf/remote')
+        conf.storages.copy(settings.root_folder, 's3://s3conf/remote')
+        conf.storages.copy('s3://s3conf/remote', Path(temp_dir).joinpath('remote'))
 
         assert open(Path(temp_dir).joinpath('remote/file1.txt')).read() == 'file1'
         assert open(Path(temp_dir).joinpath('remote/subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2

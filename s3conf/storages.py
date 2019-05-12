@@ -1,19 +1,16 @@
 import os
 import codecs
 import logging
-import io
 import difflib
 from shutil import copyfileobj
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from functools import lru_cache
 
 import editor
 
-from .storage.storages import S3Storage, GCStorage, LocalStorage, md5s3
+from .storage.storages import S3Storage, GCStorage, LocalStorage
 from .storage.files import File
 from .storage.exceptions import FileDoesNotExist
-from . import exceptions
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -52,7 +49,7 @@ def partition_path(path):
     return protocol, bucket, path
 
 
-def get_s3_storage(settings, file_cls, bucket):
+def get_s3_storage(settings, file_class, bucket):
     return S3Storage(
         aws_access_key_id=settings.get('S3CONF_ACCESS_KEY_ID') or settings.get('AWS_ACCESS_KEY_ID'),
         aws_secret_access_key=settings.get('S3CONF_SECRET_ACCESS_KEY') or settings.get('AWS_SECRET_ACCESS_KEY'),
@@ -60,16 +57,16 @@ def get_s3_storage(settings, file_cls, bucket):
         region_name=settings.get('S3CONF_S3_REGION_NAME') or settings.get('AWS_S3_REGION_NAME'),
         use_ssl=settings.get('S3CONF_S3_USE_SSL') or settings.get('AWS_S3_USE_SSL', True),
         endpoint_url=settings.get('S3CONF_S3_ENDPOINT_URL') or settings.get('AWS_S3_ENDPOINT_URL'),
-        file_cls=file_cls,
+        file_class=file_class,
         bucket=bucket,
     )
 
 
-def get_gs_storage(settings, file_cls, bucket):
+def get_gs_storage(settings, file_class, bucket):
     return GCStorage(
         credential_file=settings.get('S3CONF_APPLICATION_CREDENTIALS') or settings.get(
             'GOOGLE_APPLICATION_CREDENTIALS'),
-        file_cls=file_cls,
+        file_class=file_class,
         bucket=bucket,
     )
 
@@ -88,10 +85,10 @@ def _make_storage(settings, protocol, bucket):
         storage = {
             's3': get_s3_storage(settings, BaseFile, bucket),
             'gs': get_gs_storage(settings, BaseFile, bucket),
-            'file': LocalStorage(file_cls=BaseFile, root=settings.root_folder),
+            'file': LocalStorage(file_class=BaseFile, root=settings.root_folder),
         }[protocol]
     except KeyError:
-        storage = LocalStorage(file_cls=BaseFile, root=settings.root_folder)
+        storage = LocalStorage(file_class=BaseFile, root=settings.root_folder)
     logger.debug('Using %s storage', storage)
     return storage
 
@@ -117,19 +114,26 @@ class StorageMapper:
             for file_path, etag in files.items():
                 yield etag, file_path, os.path.join(target_path, os.path.relpath(file_path, source_path))
 
-    def copy(self, source_path, target_path, force=False):
+    def prepare_copy_list(self, source_path, target_path, force=False):
         hashes = []
-        source = self.storage(source_path)
+        to_copy = []
         target = self.storage(target_path)
         _, _, target_path = partition_path(target_path)
         if not force:
             target_hashes = {os.path.join(target_path, file_path): etag for etag, file_path in target.list(target_path)}
         for etag, source_file, target_file in self.map(source_path, target_path):
-            should_copy = force or target_file not in target_hashes or target_hashes[target_file] != etag
-            if should_copy:
-                with source.open(source_file) as source_stream, target.open(target_file, 'wb') as target_stream:
-                    copyfileobj(source_stream, target_stream)
+            if force or target_file not in target_hashes or target_hashes[target_file] != etag:
+                to_copy.append((source_file, target_file))
             hashes.append((source_file, target_file, etag))
+        return hashes, to_copy
+
+    def copy(self, source_path, target_path, force=False):
+        hashes, to_copy = self.prepare_copy_list(source_path, target_path, force)
+        source = self.storage(source_path)
+        target = self.storage(target_path)
+        for source_file, target_file in to_copy:
+            with source.open(source_file) as source_stream, target.open(target_file, 'wb') as target_stream:
+                copyfileobj(source_stream, target_stream)
         return hashes
 
 
@@ -169,6 +173,7 @@ class BaseFile(File):
         self.truncate()
         self.write(edited_data.decode())
 
+
 class EnvFile(BaseFile):
     @classmethod
     def from_file(cls, obj):
@@ -186,22 +191,18 @@ class EnvFile(BaseFile):
             pass
         return env_dict
 
-    def set(self, value, create=False):
+    def set(self, value):
         new_key, new_value = parse_env_var(value)
         new_lines = []
         value_set = False
-        try:
-            self.seek(0)
-            for line in self.read().splitlines():
-                key, value = parse_env_var(line)
-                if key == new_key:
-                    new_lines.append('{}={}'.format(new_key, new_value))
-                    value_set = True
-                else:
-                    new_lines.append(line)
-        except FileNotFoundError:
-            if not create:
-                raise
+        self.seek(0)
+        for line in self.read().splitlines():
+            key, value = parse_env_var(line)
+            if key == new_key:
+                new_lines.append('{}={}'.format(new_key, new_value))
+                value_set = True
+            else:
+                new_lines.append(line)
         if not value_set:
             new_lines.append('{}={}'.format(new_key, new_value))
         self.seek(0)

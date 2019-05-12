@@ -5,48 +5,31 @@ from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryFile
 from shutil import copyfileobj
-
-import boto3
-from botocore.exceptions import ClientError
-from google.cloud import storage
+from functools import lru_cache
 
 from .files import File
 from . import exceptions
 
+EXTRAS = []
+
+try:
+    import boto3
+    from botocore.exceptions import ClientError
+    EXTRAS.append(boto3)
+except ImportError:
+    pass
+
+try:
+    from google.cloud import storage
+
+    EXTRAS.append(storage)
+except ImportError:
+    pass
+
+if not EXTRAS:
+    raise ImportError('At least one extra from [boto3, google-cloud-storage] must be installed.')
 
 logger = logging.getLogger(__name__)
-
-
-# Function : md5sum
-# Purpose : Get the md5 hash of a file stored in S3
-# Returns : Returns the md5 hash that will match the ETag in S3
-# https://stackoverflow.com/questions/6591047/etag-definition-changed-in-amazon-s3/28877788#28877788
-# https://github.com/boto/boto3/blob/0cc6042615fd44c6822bd5be5a4019d0901e5dd2/boto3/s3/transfer.py#L169
-def md5s3(file_like,
-          multipart_threshold=8 * 1024 * 1024,
-          multipart_chunksize=8 * 1024 * 1024):
-    md5hash = hashlib.md5()
-    file_like.seek(0)
-    filesize = 0
-    block_count = 0
-    md5string = b''
-    for block in iter(lambda: file_like.read(multipart_chunksize), b''):
-        md5hash = hashlib.md5()
-        md5hash.update(block)
-        md5string += md5hash.digest()
-        filesize += len(block)
-        block_count += 1
-
-    if filesize > multipart_threshold:
-        md5hash = hashlib.md5()
-        md5hash.update(md5string)
-        md5hash = md5hash.hexdigest() + "-" + str(block_count)
-    else:
-        md5hash = md5hash.hexdigest()
-
-    file_like.seek(0)
-    # https://github.com/aws/aws-sdk-net/issues/815
-    return f'"{md5hash}"'
 
 
 def strip_prefix(text, prefix):
@@ -54,23 +37,28 @@ def strip_prefix(text, prefix):
 
 
 class BaseStorage:
-    def __init__(self, file_cls=None):
-        if file_cls and not issubclass(file_cls, File):
+    def __init__(self, file_class=None):
+        if file_class and not issubclass(file_class, File):
             raise TypeError(f'FileCls must inherit from File')
-        self.FileCls = file_cls or File
+        self.file_class = file_class or File
 
     def read_into_stream(self, path, stream=None):
         raise NotImplementedError()
 
     def open(self, path, mode='rb', encoding=None):
         logger.debug('Reading from %s', path)
-        return self.FileCls(path, storage=self, mode=mode, encoding=encoding)
+        return self.file_class(path, storage=self, mode=mode, encoding=encoding)
 
     def write(self, f, path):
         raise NotImplementedError()
 
     def list(self, path):
         raise NotImplementedError()
+
+
+@lru_cache()
+def get_s3_bucket(_storage, bucket):
+    return _storage.s3.Bucket(bucket)
 
 
 class S3Storage(BaseStorage):
@@ -114,7 +102,7 @@ class S3Storage(BaseStorage):
     def read_into_stream(self, path, stream=None):
         try:
             stream = stream or BytesIO()
-            bucket = self.s3.Bucket(self.bucket)
+            bucket = get_s3_bucket(self, self.bucket)
             bucket.download_fileobj(path, stream)
             stream.seek(0)
             return stream
@@ -126,14 +114,14 @@ class S3Storage(BaseStorage):
                 raise
 
     def _write(self, f, path):
-        bucket = self.s3.Bucket(self.bucket)
+        bucket = get_s3_bucket(self, self.bucket)
         # boto3 closes the handler, creating a copy
         # https://github.com/boto/s3transfer/issues/80
-        file_to_close = TemporaryFile()
-        f.seek(0)
-        copyfileobj(f, file_to_close)
-        file_to_close.seek(0)
-        bucket.upload_fileobj(file_to_close, path)
+        with TemporaryFile() as file_to_close:
+            f.seek(0)
+            copyfileobj(f, file_to_close)
+            file_to_close.seek(0)
+            bucket.upload_fileobj(file_to_close, path)
 
     def write(self, f, path):
         logger.debug('Writing to %s', path)
@@ -145,11 +133,10 @@ class S3Storage(BaseStorage):
 
     def list(self, path):
         logger.debug('Listing %s', path)
-        bucket = self.s3.Bucket(self.bucket)
+        bucket = get_s3_bucket(self, self.bucket)
         path = path.rstrip('/')
         try:
             for obj in bucket.objects.filter(Prefix=path):
-                # relative_path = strip_prefix(obj.key, path)
                 if not obj.key.endswith('/'):
                     yield obj.e_tag, obj.key
         except ClientError as e:
@@ -157,6 +144,11 @@ class S3Storage(BaseStorage):
                 logger.warning('Bucket does not exist, list() returning empty.')
             else:
                 raise
+
+
+@lru_cache()
+def get_gcs_bucket(_storage, bucket):
+    return _storage.gcs.get_bucket(bucket)
 
 
 class GCStorage(BaseStorage):
@@ -179,14 +171,14 @@ class GCStorage(BaseStorage):
 
     def read_into_stream(self, path, stream=None):
         stream = stream or BytesIO()
-        bucket = self.gcs.get_bucket(self.bucket)
+        bucket = get_gcs_bucket(self, self.bucket)
         blob = bucket.blob(path)
         blob.download_to_file(stream)
         stream.seek(0)
         return stream
 
     def _write(self, f, path):
-        bucket = self.gcs.get_bucket(self.bucket)
+        bucket = get_gcs_bucket(self, self.bucket)
         blob = bucket.blob(path)
         f.seek(0)
         blob.upload_from_file(f, path)
@@ -201,11 +193,43 @@ class GCStorage(BaseStorage):
 
     def list(self, path):
         logger.debug('Listing %s', path)
-        bucket = self.gcs.get_bucket(self.bucket)
+        bucket = get_gcs_bucket(self, self.bucket)
         path = path.rstrip('/')
         for obj in bucket.list_blobs(prefix=path):
             if not obj.name.endswith('/'):
                 yield obj.etag, obj.name
+
+
+# Function : md5sum
+# Purpose : Get the md5 hash of a file stored in S3
+# Returns : Returns the md5 hash that will match the ETag in S3
+# https://stackoverflow.com/questions/6591047/etag-definition-changed-in-amazon-s3/28877788#28877788
+# https://github.com/boto/boto3/blob/0cc6042615fd44c6822bd5be5a4019d0901e5dd2/boto3/s3/transfer.py#L169
+def s3etag(file_like,
+           multipart_threshold=8 * 1024 * 1024,
+           multipart_chunksize=8 * 1024 * 1024):
+    md5hash = hashlib.md5()
+    file_like.seek(0)
+    filesize = 0
+    block_count = 0
+    md5string = b''
+    for block in iter(lambda: file_like.read(multipart_chunksize), b''):
+        md5hash = hashlib.md5()
+        md5hash.update(block)
+        md5string += md5hash.digest()
+        filesize += len(block)
+        block_count += 1
+
+    if filesize > multipart_threshold:
+        md5hash = hashlib.md5()
+        md5hash.update(md5string)
+        md5hash = md5hash.hexdigest() + "-" + str(block_count)
+    else:
+        md5hash = md5hash.hexdigest()
+
+    file_like.seek(0)
+    # https://github.com/aws/aws-sdk-net/issues/815
+    return f'"{md5hash}"'
 
 
 class LocalStorage(BaseStorage):
@@ -237,10 +261,8 @@ class LocalStorage(BaseStorage):
         if path.is_dir():
             for root, dirs, files in os.walk(path):
                 for file in files:
-                    yield md5s3(open(Path(root).joinpath(file), 'rb')), Path(root).joinpath(file)
+                    yield s3etag(open(Path(root).joinpath(file), 'rb')), Path(root).joinpath(file)
         else:
             # only yields if it exists
             if path.exists():
-                # the relative path of a file to itself is empty
-                # same behavior as in boto3
-                yield md5s3(open(path, 'rb')), str(path)
+                yield s3etag(open(path, 'rb')), str(path)
