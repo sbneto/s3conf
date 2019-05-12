@@ -1,10 +1,10 @@
-import os
 import codecs
 import logging
 import json
 from pathlib import Path
 
-from . import exceptions, files, storages, config
+from . import exceptions, config
+from .storages import StorageMapper, EnvFile, partition_path
 
 logger = logging.getLogger(__name__)
 __escape_decoder = codecs.getdecoder('unicode_escape')
@@ -44,76 +44,57 @@ def raise_out_of_sync(local_file, remote_file):
 
 
 class S3Conf:
-    def __init__(self, storage=None, settings=None):
+    def __init__(self, settings=None):
         self.settings = settings or config.Settings()
-        StorageCls = storages.get_storage(settings.environment_file_path)
-        self.storage = storage or StorageCls(settings=self.settings)
+        self._storages = None
+
+    @property
+    def storages(self):
+        if not self._storages:
+            self._storages = StorageMapper(self.settings)
+        return self._storages
+
+    def check_remote_changes(self):
+        local_hashes = json.load(open(self.settings.hash_file)) if self.settings.hash_file.exists() else {}
+        for local_path, remote_path in self.settings.file_mappings.items():
+            remote = self.storages.storage(remote_path)
+            _, _, parsed_remote_path = partition_path(remote_path)
+            remote_hashes = {file_path: etag for etag, file_path in remote.list(parsed_remote_path)}
+            for etag, local_file, remote_file in self.storages.map(local_path, remote_path):
+                local_hash = local_hashes.get(str(local_file))
+                remote_hash = remote_hashes.get(str(remote_file))
+                if local_hash:
+                    if local_hash != remote_hash:
+                        raise_out_of_sync(local_file, remote_file)
+                else:
+                    logger.warning('New mapped file detected: %s', local_file)
 
     def push(self, force=False):
         if not force:
-            md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
-            hashes = json.load(open(md5_hash_file_name)) if md5_hash_file_name.exists() else {}
-
-        if not force:
-            for local_path, remote_path in self.settings.file_mappings.items():
-                mapping = config.expand_mapping(local_path, remote_path)
-                for local_file, remote_file in mapping.items():
-                    current_hash = hashes.get(str(local_file))
-                    if current_hash:
-                        with self.storage.open(remote_file) as remote_stream:
-                            if current_hash != remote_stream.md5():
-                                raise_out_of_sync(local_file, remote_file)
-                    else:
-                        logger.warning('New mapped file detected: %s', local_file)
-
+            self.check_remote_changes()
         hashes = {}
         for local_path, remote_path in self.settings.file_mappings.items():
-            hashes.update(self.upload(local_path, remote_path))
-        md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
-        json.dump({str(k): v for k, v in hashes.items()}, open(md5_hash_file_name, 'w'), indent=4)
+            copy_hashes = self.storages.copy(local_path, remote_path)
+            hashes.update({str(local_file): md5 for local_file, _, md5 in copy_hashes})
+        json.dump(hashes, open(self.settings.hash_file, 'w'), indent=4)
         return hashes
 
     def pull(self):
         hashes = {}
         for local_path, remote_path in self.settings.file_mappings.items():
-            hashes.update(self.download(remote_path, local_path))
-        md5_hash_file_name = self.settings.cache_dir.joinpath('md5')
-        json.dump({str(k): v for k, v in hashes.items()}, open(md5_hash_file_name, 'w'), indent=4)
+            copy_hashes = self.storages.copy(remote_path, local_path)
+            hashes.update({str(local_file): md5 for _, local_file, md5 in copy_hashes})
+        json.dump(hashes, open(self.settings.hash_file, 'w'), indent=4)
         return hashes
 
-    def download(self, remote_path, local_path, force=False):
-        hashes = {}
-        logger.info('Downloading %s to %s', remote_path, local_path)
-        remote_files = {file_path: md5hash for md5hash, file_path in self.storage.list(remote_path)}
-        is_dir = False if len(remote_files) == 1 and '' in remote_files else True
-        local_storage = storages.LocalStorage(self.settings)
-        for file_path, md5hash in remote_files.items():
-            target_name = local_path.joinpath(file_path) if is_dir else local_path
-            target_name.parent.mkdir(parents=True, exist_ok=True)
-            with local_storage.open(target_name) as local_stream:
-                existing_md5 = local_stream.md5() if local_stream.exists() and not force else None
-                if not existing_md5 or existing_md5 != md5hash:
-                    source_name = os.path.join(remote_path, file_path).rstrip('/')
-                    logger.debug('Transferring file %s to %s', source_name, target_name)
-                    with self.storage.open(source_name) as remote_stream:
-                        remote_stream.read_into_stream(local_stream)
-            hashes[target_name] = md5hash
-        return hashes
-
-    def upload(self, local_path, remote_path):
-        logger.info('Uploading %s to %s', local_path, remote_path)
-        hashes = {}
-        mapping = config.expand_mapping(local_path, remote_path)
-        for file_source, file_target in mapping.items():
-            with open(file_source, 'rb') as local_stream, self.storage.open(file_target) as remote_stream:
-                files.copyfileobj(local_stream, remote_stream)
-            hashes[file_source] = remote_stream.md5()
-        return hashes
-
-    def get_envfile(self):
+    def get_envfile(self, create=False):
         logger.info('Loading configs from {}'.format(self.settings.environment_file_path))
-        return files.EnvFile.from_file(self.storage.open(self.settings.environment_file_path))
+        remote_storage = self.storages.storage(self.settings.environment_file_path)
+        _, _, path = partition_path(self.settings.environment_file_path)
+        envfile_exist = bool(list(remote_storage.list(path)))
+        mode = 'w+' if not envfile_exist and create else 'r+'
+        return EnvFile.from_file(remote_storage.open(path, mode=mode))
 
     def edit(self, create=False):
-        with self.storage.open(self.settings.environment_file_path) as remote_stream:
-            files.EnvFile.from_file(remote_stream).edit(create=create)
+        with self.get_envfile(create=create) as envfile:
+            envfile.edit()

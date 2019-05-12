@@ -1,222 +1,246 @@
 import os
+import codecs
 import logging
-from io import BytesIO
+import difflib
+from shutil import copyfileobj
 from pathlib import Path
-from tempfile import TemporaryFile
+from functools import lru_cache
 
-import boto3
-from botocore.exceptions import ClientError
-from google.cloud import storage
+import editor
 
-from .utils import md5s3
-from .files import File, copyfileobj
-from . import exceptions
-
+from .storage.storages import S3Storage, GCStorage, LocalStorage
+from .storage.files import File
+from .storage.exceptions import FileDoesNotExist
 
 logger = logging.getLogger(__name__)
+__escape_decoder = codecs.getdecoder('unicode_escape')
+
+
+def parse_env_var(value):
+    """
+    Split a env var text like
+
+    ENV_VAR_NAME=env_var_value
+
+    into a tuple ('ENV_VAR_NAME', 'env_var_value')
+    """
+    k, _, v = value.partition('=')
+
+    # Remove any leading and trailing spaces in key, value
+    k, v = k.strip(), v.strip().encode('unicode-escape').decode('ascii')
+
+    if v and v[0] == v[-1] in ['"', "'"]:
+        v = __escape_decoder(v[1:-1])[0]
+    return k, v
 
 
 def strip_prefix(text, prefix):
     return text[len(prefix):] if text.startswith(prefix) else text
 
 
-def strip_s3_path(path):
-    bucket, _, path = strip_prefix(path, 's3://').partition('/')
-    return bucket, path
+def partition_path(path):
+    protocol, _, path = str(path).partition(':')
+    if not path:
+        path = protocol
+        protocol = 'file'
+        bucket = None
+    else:
+        bucket, _, path = path.lstrip('/').partition('/')
+    return protocol, bucket, path
 
 
-def strip_gs_path(path):
-    bucket, _, path = strip_prefix(path, 'gs://').partition('/')
-    return bucket, path
+def get_s3_storage(settings, file_class, bucket):
+    return S3Storage(
+        aws_access_key_id=settings.get('S3CONF_ACCESS_KEY_ID') or settings.get('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=settings.get('S3CONF_SECRET_ACCESS_KEY') or settings.get('AWS_SECRET_ACCESS_KEY'),
+        aws_session_token=settings.get('S3CONF_SESSION_TOKEN') or settings.get('AWS_SESSION_TOKEN'),
+        region_name=settings.get('S3CONF_S3_REGION_NAME') or settings.get('AWS_S3_REGION_NAME'),
+        use_ssl=settings.get('S3CONF_S3_USE_SSL') or settings.get('AWS_S3_USE_SSL', True),
+        endpoint_url=settings.get('S3CONF_S3_ENDPOINT_URL') or settings.get('AWS_S3_ENDPOINT_URL'),
+        file_class=file_class,
+        bucket=bucket,
+    )
 
 
-def get_storage(path):
-    logger.debug('Getting storage for %s', path)
-    prefix, _, _ = str(path).partition(':')
+def get_gs_storage(settings, file_class, bucket):
+    return GCStorage(
+        credential_file=settings.get('S3CONF_APPLICATION_CREDENTIALS') or settings.get(
+            'GOOGLE_APPLICATION_CREDENTIALS'),
+        file_class=file_class,
+        bucket=bucket,
+    )
+
+
+def list_all_files(path):
+    if path.is_dir():
+        mapping = iter(Path(root).joinpath(name).resolve() for root, _, names in os.walk(path) for name in names)
+    else:
+        mapping = [path]
+    return mapping
+
+
+@lru_cache()
+def _make_storage(settings, protocol, bucket):
     try:
         storage = {
-            's3': S3Storage,
-            'gs': GCStorage,
-            'file': LocalStorage,
-        }[prefix]
+            's3': get_s3_storage(settings, BaseFile, bucket),
+            'gs': get_gs_storage(settings, BaseFile, bucket),
+            'file': LocalStorage(file_class=BaseFile, root=settings.root_folder),
+        }[protocol]
     except KeyError:
-        storage = LocalStorage
+        storage = LocalStorage(file_class=BaseFile, root=settings.root_folder)
     logger.debug('Using %s storage', storage)
     return storage
 
 
-class BaseStorage:
+class StorageMapper:
     def __init__(self, settings):
         self.settings = settings
 
-    def read_into_stream(self, file_path, stream=None):
-        raise NotImplementedError()
+    def storage(self, path=''):
+        protocol, bucket, _ = partition_path(path)
+        logger.debug('Getting storage for %s %s', protocol, bucket)
+        return _make_storage(self.settings, protocol, bucket)
 
-    def open(self, file_name, *args, **kwargs):
-        logger.debug('Reading from %s', file_name)
-        return File(file_name, storage=self, *args, **kwargs)
-
-    def write(self, f, file_name):
-        raise NotImplementedError()
-
-    def list(self, path):
-        raise NotImplementedError()
-
-
-class S3Storage(BaseStorage):
-    def __init__(self, settings=None):
-        super(__class__, self).__init__(settings=settings)
-        self._resource = None
-
-    @property
-    def s3(self):
-        logger.debug('Getting S3 resource')
-        # See how boto resolve credentials in
-        # http://boto3.readthedocs.io/en/latest/guide/configuration.html#guide-configuration
-        if not self._resource:
-            logger.debug('Resource does not exist, creating a new one...')
-            self._resource = boto3.resource(
-                's3',
-                aws_access_key_id=self.settings.get('S3CONF_ACCESS_KEY_ID') or self.settings.get('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=self.settings.get('S3CONF_SECRET_ACCESS_KEY') or self.settings.get('AWS_SECRET_ACCESS_KEY'),
-                aws_session_token=self.settings.get('S3CONF_SESSION_TOKEN') or self.settings.get('AWS_SESSION_TOKEN'),
-                region_name=self.settings.get('S3CONF_S3_REGION_NAME') or self.settings.get('AWS_S3_REGION_NAME'),
-                use_ssl=self.settings.get('S3CONF_S3_USE_SSL') or self.settings.get('AWS_S3_USE_SSL', True),
-                endpoint_url=self.settings.get('S3CONF_S3_ENDPOINT_URL') or self.settings.get('AWS_S3_ENDPOINT_URL'),
-            )
-        return self._resource
-
-    def read_into_stream(self, file_path, stream=None):
-        try:
-            bucket_name, file_name = strip_s3_path(file_path)
-            stream = stream or BytesIO()
-            bucket = self.s3.Bucket(bucket_name)
-            bucket.download_fileobj(file_name, stream)
-            stream.seek(0)
-            return stream
-        except ClientError as e:
-            if e.response['Error']['Code'] == '404':
-                logger.debug('File %s in bucket %s does not exist', file_name, bucket)
-                raise exceptions.FileDoesNotExist('s3://{}/{}'.format(bucket_name, file_name))
-            else:
-                raise
-
-    def _write(self, f, file_name):
-        bucket, path_target = strip_s3_path(file_name)
-        bucket = self.s3.Bucket(bucket)
-        # boto3 closes the handler, creating a copy
-        # https://github.com/boto/s3transfer/issues/80
-        file_to_close = TemporaryFile()
-        f.seek(0)
-        copyfileobj(f, file_to_close)
-        file_to_close.seek(0)
-        bucket.upload_fileobj(file_to_close, path_target)
-
-    def write(self, f, file_name):
-        logger.debug('Writing to %s', file_name)
-        try:
-            self._write(f, file_name)
-        except ClientError:
-            bucket, _ = strip_s3_path(file_name)
-            self.s3.create_bucket(Bucket=bucket)
-            self._write(f, file_name)
-
-    def list(self, path):
-        logger.debug('Listing %s', path)
-        bucket_name, path = strip_s3_path(path)
-        bucket = self.s3.Bucket(bucket_name)
-        path = path.rstrip('/')
-        try:
-            for obj in bucket.objects.filter(Prefix=path):
-                relative_path = strip_prefix(obj.key, path)
-                if relative_path.startswith('/') or not relative_path:
-                    yield obj.e_tag, relative_path.lstrip('/')
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchBucket':
-                logger.warning('Bucket does not exist, list() returning empty.')
-            else:
-                raise
-
-
-class GCStorage(BaseStorage):
-    def __init__(self, settings=None):
-        super(__class__, self).__init__(settings=settings)
-        self._resource = None
-
-    @property
-    def gcs(self):
-        logger.debug('Getting GCS resource')
-        if not self._resource:
-            logger.debug('Resource does not exist, creating a new one...')
-            credential_file = self.settings.get('S3CONF_APPLICATION_CREDENTIALS') \
-                              or self.settings.get('GOOGLE_APPLICATION_CREDENTIALS')
-            if credential_file:
-                self._resource = storage.Client.from_service_account_json(credential_file)
-            else:
-                self._resource = storage.Client()
-        return self._resource
-
-    def read_into_stream(self, file_path, stream=None):
-        stream = stream or BytesIO()
-        bucket_name, path = strip_gs_path(file_path)
-        bucket = self.gcs.get_bucket(bucket_name)
-        blob = bucket.blob(path)
-        blob.download_to_file(stream)
-        stream.seek(0)
-        return stream
-
-    def _write(self, f, file_name):
-        bucket_name, path = strip_gs_path(file_name)
-        bucket = self.gcs.get_bucket(bucket_name)
-        blob = bucket.blob(path)
-        f.seek(0)
-        blob.upload_from_file(f, path)
-
-    def write(self, f, file_name):
-        logger.debug('Writing to %s', file_name)
-        try:
-            self._write(f, file_name)
-        except Exception:
-            bucket, _ = strip_gs_path(file_name)
-            self.gcs.create_bucket(bucket)
-            self._write(f, file_name)
-
-    def list(self, path):
-        logger.debug('Listing %s', path)
-        bucket_name, path = strip_gs_path(path)
-        bucket = self.gcs.get_bucket(bucket_name)
-        path = path.rstrip('/')
-        for obj in bucket.list_blobs(prefix=path):
-            relative_path = strip_prefix(obj.name, path)
-            if relative_path.startswith('/') or not relative_path:
-                yield obj.etag, relative_path.lstrip('/')
-
-
-class LocalStorage(BaseStorage):
-    def read_into_stream(self, file_name, stream=None):
-        try:
-            stream = stream or BytesIO()
-            with open(file_name, 'rb') as f:
-                stream.write(f.read())
-            stream.seek(0)
-            return stream
-        except FileNotFoundError:
-            raise exceptions.FileDoesNotExist(file_name)
-
-    def write(self, f, file_name):
-        Path(file_name).parent.mkdir(parents=True, exist_ok=True)
-        f.seek(0)
-        copyfileobj(f, open(file_name, 'wb'))
-
-    def list(self, path):
-        path = Path(path)
-        if path.is_dir():
-            for root, dirs, files in os.walk(path):
-                for file in files:
-                    yield md5s3(open(file, 'rb')), Path(root).joinpath(file).relative_to(path)
+    def map(self, source_path, target_path):
+        source = self.storage(source_path)
+        _, _, source_path = partition_path(source_path)
+        _, _, target_path = partition_path(target_path)
+        files = {file_path: etag for etag, file_path in source.list(source_path)}
+        is_dir = False if len(files) == 1 and source_path in files else True
+        if not is_dir:
+            yield files[source_path], source_path, target_path
         else:
-            # only yields if it exists
-            if path.exists():
-                # the relative path of a file to itself is empty
-                # same behavior as in boto3
-                yield md5s3(open(path, 'rb')), ''
+            for file_path, etag in files.items():
+                yield etag, file_path, os.path.join(target_path, os.path.relpath(file_path, source_path))
+
+    def prepare_copy_list(self, source_path, target_path, force=False):
+        hashes = []
+        to_copy = []
+        target = self.storage(target_path)
+        _, _, target_path = partition_path(target_path)
+        if not force:
+            target_hashes = {os.path.join(target_path, file_path): etag for etag, file_path in target.list(target_path)}
+        for etag, source_file, target_file in self.map(source_path, target_path):
+            if force or target_file not in target_hashes or target_hashes[target_file] != etag:
+                to_copy.append((source_file, target_file))
+            hashes.append((source_file, target_file, etag))
+        return hashes, to_copy
+
+    def copy(self, source_path, target_path, force=False):
+        hashes, to_copy = self.prepare_copy_list(source_path, target_path, force)
+        source = self.storage(source_path)
+        target = self.storage(target_path)
+        for source_file, target_file in to_copy:
+            with source.open(source_file) as source_stream, target.open(target_file, 'wb') as target_stream:
+                copyfileobj(source_stream, target_stream)
+        return hashes
+
+
+class BaseFile(File):
+    def exists(self):
+        if list(self.storage.list(self.name)):
+            return True
+        return False
+
+    def md5(self, raise_if_not_exists=True):
+        try:
+            md5hash, _ = next(self.storage.list(self.name))
+        except StopIteration:
+            if raise_if_not_exists:
+                raise FileDoesNotExist(self.name)
+            else:
+                md5hash = None
+        return md5hash
+
+    def diff(self, file_stream, fromfile='remote', tofile='local', **kwargs):
+        file_stream.seek(0)
+        self.seek(0)
+        result = difflib.unified_diff(
+            self.readlines(),
+            file_stream.readlines(),
+            fromfile=fromfile,
+            tofile=tofile,
+            **kwargs
+        )
+        return result
+
+    def edit(self):
+        self.seek(0)
+        original_data = self.read()
+        edited_data = editor.edit(contents=original_data)
+        self.seek(0)
+        self.truncate()
+        self.write(edited_data.decode())
+
+
+class EnvFile(BaseFile):
+    @classmethod
+    def from_file(cls, obj):
+        obj.__class__ = cls
+        return obj
+
+    def as_dict(self):
+        env_dict = {}
+        try:
+            self.seek(0)
+            lines = self.read().splitlines()
+            lines = [line for line in lines if line and not line.startswith('#') and '=' in line]
+            env_dict = dict(parse_env_var(line) for line in lines)
+        except FileNotFoundError:
+            pass
+        return env_dict
+
+    def set(self, value):
+        new_key, new_value = parse_env_var(value)
+        new_lines = []
+        value_set = False
+        self.seek(0)
+        for line in self.read().splitlines():
+            key, value = parse_env_var(line)
+            if key == new_key:
+                new_lines.append('{}={}'.format(new_key, new_value))
+                value_set = True
+            else:
+                new_lines.append(line)
+        if not value_set:
+            new_lines.append('{}={}'.format(new_key, new_value))
+        self.seek(0)
+        self.truncate()
+        self.write('\n'.join(new_lines))
+        self.file.flush()
+
+    def unset(self, unset_key):
+        new_lines = []
+        unset_done = False
+        try:
+            self.seek(0)
+            for line in self.read().splitlines():
+                key, value = parse_env_var(line)
+                if key == unset_key:
+                    unset_done = True
+                    continue
+                else:
+                    new_lines.append(line)
+        except FileNotFoundError:
+            logger.warning('File does not exist')
+
+        if unset_done:
+            self.seek(0)
+            self.truncate()
+            self.write('\n'.join(new_lines))
+            self.file.flush()
+        else:
+            logger.info('Key %s not found in environemnt file, doing nothing...', unset_key)
+
+    def from_dict(self, env_vars):
+        file_data = ''
+        for var_name, var_value in env_vars.items():
+            file_data += '{}={}\n'.format(var_name, var_value)
+        self.truncate()
+        self.write(file_data)
+
+    def update(self, another_file):
+        env_vars = self.as_dict()
+        env_vars.update(another_file.as_dict())
+        self.from_dict(env_vars)

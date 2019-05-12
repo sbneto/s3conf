@@ -7,8 +7,9 @@ from pathlib import Path
 import pytest
 from botocore.exceptions import ClientError
 
+import s3conf.storages
 from s3conf import exceptions
-from s3conf import config, storages, s3conf
+from s3conf import config, s3conf
 
 logging.getLogger('boto3').setLevel(logging.ERROR)
 logging.getLogger('botocore').setLevel(logging.ERROR)
@@ -23,9 +24,9 @@ def _setup_basic_test(temp_dir):
     config_file.parent.mkdir(parents=True, exist_ok=True)
     open(default_config_file, 'w').write(
         '[DEFAULT]\n'
-        'AWS_S3_ENDPOINT_URL=http://localhost:4572\n'
-        'AWS_ACCESS_KEY_ID=key\n'
-        'AWS_SECRET_ACCESS_KEY=secret\n'
+        'AWS_S3_ENDPOINT_URL=http://localhost:9000\n'
+        'AWS_ACCESS_KEY_ID=testtest\n'
+        'AWS_SECRET_ACCESS_KEY=testtest\n'
     )
     open(config_file, 'w').write(
         '[test]\n'
@@ -45,8 +46,8 @@ def _setup_basic_test(temp_dir):
 
     try:
         settings = config.Settings(section='test')
-        s3 = s3conf.S3Conf(settings=settings)
-        bucket = s3.storage.s3.Bucket('s3conf')
+        conf = s3conf.S3Conf(settings=settings)
+        bucket = conf.storages.storage(settings.environment_file_path).s3.Bucket('s3conf')
         bucket.objects.all().delete()
         bucket.delete()
     except ClientError as e:
@@ -55,30 +56,54 @@ def _setup_basic_test(temp_dir):
     return config_file, default_config_file
 
 
-def test_expand_mapping():
+def test_etag():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file, _ = _setup_basic_test(temp_dir)
+
+        settings = config.Settings(section='test')
+        conf = s3conf.S3Conf(settings=settings)
+
+        local_path = Path(temp_dir).joinpath('tests/path1/file1.txt')
+        conf.storages.copy(local_path, 's3://s3conf/remote/file1.txt')
+        storage = conf.storages.storage('s3://s3conf/remote/file1.txt')
+        file_list = list(storage.list('remote/file1.txt'))
+        file = conf.storages.storage(local_path).open(local_path)
+        assert file.md5() == file_list[0][0]
+
+
+def test_mapping():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
-        mapping = settings.create_mapping(settings.config_file)
-        assert mapping == {
-            settings.config_file: 's3://s3conf/files/s3conf.ini',
-        }
-        mapping = settings.create_mapping(settings.root_folder.joinpath('subfolder'))
-        assert mapping == {
-            settings.root_folder.joinpath('subfolder/file2.txt'): 's3://s3conf/files/subfolder/file2.txt',
-            settings.root_folder.joinpath('subfolder/file3.txt'): 's3://s3conf/files/subfolder/file3.txt',
-        }
+        conf = s3conf.S3Conf(settings=settings)
+        mapping = list(conf.storages.map(settings.config_file, 's3://s3conf/files/s3conf.ini'))
+        assert mapping == [
+            ('"d219ee6bd8f9e9ddda91cf51f263a883"', str(settings.config_file), 'files/s3conf.ini'),
+        ]
+        mapping = list(conf.storages.map(settings.root_folder.joinpath('subfolder'), 's3://s3conf/files/subfolder'))
+        assert mapping == [
+            (
+                '"c269c739c5226abab0a4fce7df301155-2"',
+                settings.root_folder.joinpath('subfolder/file2.txt'),
+                'files/subfolder/file2.txt',
+            ),
+            (
+                '"2548729e9c3c60cc3789dfb2408e475d"',
+                settings.root_folder.joinpath('subfolder/file3.txt'),
+                'files/subfolder/file3.txt',
+            )
+        ]
 
 
 def test_file():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
-        storage = storages.LocalStorage(settings=config.Settings(section='test'))
-        test_file = Path(temp_dir).joinpath('test_file.txt')
-        with storage.open(test_file) as f:
+        settings = config.Settings(section='test')
+        conf = s3conf.S3Conf(settings=settings)
+        with conf.storages.storage().open('test/test.txt', 'w') as f:
             f.write('test')
-            f.flush()
-            assert f.read() == b'test'
+        with conf.storages.storage().open('test/test.txt', 'r') as f:
+            assert f.read() == 'test'
 
 
 def test_add():
@@ -95,10 +120,13 @@ def test_add():
 def test_diff():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
-        storage = storages.LocalStorage(settings=config.Settings(section='test'))
-        with storage.open(Path(temp_dir).joinpath('test.txt')) as f:
+        settings = config.Settings(section='test')
+        conf = s3conf.S3Conf(settings=settings)
+        storage = conf.storages.storage()
+        with storage.open(Path(temp_dir).joinpath('test.txt'), 'w') as f:
             f.write('test1\ntest2\ntest3\n')
-        with tempfile.NamedTemporaryFile(mode='w+') as temp_f:
+        with storage.open(Path(temp_dir).joinpath('test.txt'), 'r') as f, \
+                tempfile.NamedTemporaryFile(mode='w+') as temp_f:
             temp_f.write('test1\ntest2\ntest new\n')
             diff = f.diff(temp_f)
             assert ''.join(diff) == '--- remote\n' \
@@ -117,13 +145,15 @@ def test_push_pull_files():
         settings = config.Settings(section='test')
         s3 = s3conf.S3Conf(settings=settings)
 
-        hashes = s3.push(force=True)
+        hashes = s3.push()
 
         assert hashes == {
-            settings.root_folder.joinpath('file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
-            settings.root_folder.joinpath('subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
-            settings.root_folder.joinpath('subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
+            str(settings.root_folder.joinpath('file1.txt')): '"826e8142e6baabe8af779f5f490cf5f5"',
+            str(settings.root_folder.joinpath('subfolder/file2.txt')): '"c269c739c5226abab0a4fce7df301155-2"',
+            str(settings.root_folder.joinpath('subfolder/file3.txt')): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
+
+        s3.push()
 
         os.remove(Path(settings.root_folder).joinpath('file1.txt'))
         rmtree(Path(settings.root_folder).joinpath('subfolder'))
@@ -131,44 +161,21 @@ def test_push_pull_files():
         hashes = s3.pull()
 
         assert hashes == {
-            settings.root_folder.joinpath('file1.txt'): '"826e8142e6baabe8af779f5f490cf5f5"',
-            settings.root_folder.joinpath('subfolder/file2.txt'): '"c269c739c5226abab0a4fce7df301155-2"',
-            settings.root_folder.joinpath('subfolder/file3.txt'): '"2548729e9c3c60cc3789dfb2408e475d"'
+            str(settings.root_folder.joinpath('file1.txt')): '"826e8142e6baabe8af779f5f490cf5f5"',
+            str(settings.root_folder.joinpath('subfolder/file2.txt')): '"c269c739c5226abab0a4fce7df301155-2"',
+            str(settings.root_folder.joinpath('subfolder/file3.txt')): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
-        # # must fail unless forced
-        # with pytest.raises(exceptions.LocalCopyOutdated):
-        #     s3.upsync(local_root, map_files=True)
 
-
-def test_folder_check_download():
+def test_copy():
     with tempfile.TemporaryDirectory() as temp_dir:
         config_file, _ = _setup_basic_test(temp_dir)
 
         settings = config.Settings(section='test')
-        s3 = s3conf.S3Conf(settings=settings)
-
-        settings.root_folder.joinpath('subfolder2').mkdir(parents=True, exist_ok=True)
-        open(settings.root_folder.joinpath('subfolder2/file4.txt'), 'w').write('file5')
-        open(settings.root_folder.joinpath('subfolder3'), 'w').write('subfolder3')
-
-        s3.upload(settings.root_folder.joinpath('subfolder'), 's3://tests/subfolder')
-        s3.upload(settings.root_folder.joinpath('subfolder2'), 's3://tests/subfolder2')
-        s3.upload(settings.root_folder.joinpath('subfolder3'), 's3://tests/subfolder3')
-        s3.download('s3://tests/subfolder', Path(temp_dir).joinpath('subfolder'))
-        s3.download('s3://tests/subfolder2', Path(temp_dir).joinpath('subfolder2'))
-        s3.download('s3://tests/subfolder3', Path(temp_dir).joinpath('subfolder3'))
-
-
-def test_upload_download_files():
-    with tempfile.TemporaryDirectory() as temp_dir:
-        config_file, _ = _setup_basic_test(temp_dir)
-
-        settings = config.Settings(section='test')
-        s3 = s3conf.S3Conf(settings=settings)
-
-        s3.upload(settings.root_folder, 's3://tests/remote/')
-        s3.download('s3://tests/remote/', Path(temp_dir).joinpath('remote'))
+        conf = s3conf.S3Conf(settings=settings)
+        conf.storages.copy(settings.root_folder, 's3://s3conf/remote')
+        conf.storages.copy(settings.root_folder, 's3://s3conf/remote')
+        conf.storages.copy('s3://s3conf/remote', Path(temp_dir).joinpath('remote'))
 
         assert open(Path(temp_dir).joinpath('remote/file1.txt')).read() == 'file1'
         assert open(Path(temp_dir).joinpath('remote/subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
@@ -199,11 +206,12 @@ def test_setup_environment():
         settings = config.Settings(section='test')
         s3 = s3conf.S3Conf(settings=settings)
 
-        with s3.storage.open('s3://s3conf/test.env') as f:
+        with s3.get_envfile('w') as f:
             f.write('TEST=123\nTEST2=456\n')
 
         with s3.get_envfile() as env_file:
             env_vars = env_file.as_dict()
+
         s3.pull()
 
         assert env_vars['TEST'] == '123'
@@ -255,21 +263,12 @@ def test_non_existing_lookup_config_folder():
 
 def test_set_unset_env_var():
     with tempfile.TemporaryDirectory() as temp_dir:
-        config_file = Path(temp_dir).joinpath('.s3conf/config')
-        config_file.parent.mkdir(parents=True, exist_ok=True)
-        open(config_file, 'w').write("""
-        [test]
-            AWS_S3_ENDPOINT_URL=http://localhost:4572
-            AWS_ACCESS_KEY_ID=key
-            AWS_SECRET_ACCESS_KEY=secret
-            AWS_S3_REGION_NAME=region
-            S3CONF=s3://s3conf/test.env
-        """)
-        settings = config.Settings(section='test', config_file=config_file)
+        config_file, _ = _setup_basic_test(temp_dir)
+        settings = config.Settings(section='test')
         s3 = s3conf.S3Conf(settings=settings)
 
-        with s3.get_envfile() as env_file:
-            env_file.set('TEST=123', create=True)
+        with s3.get_envfile(create=True) as env_file:
+            env_file.set('TEST=123')
 
             env_vars = env_file.as_dict()
             assert env_vars['TEST'] == '123'
