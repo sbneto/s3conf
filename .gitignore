@@ -49,6 +49,7 @@ static-collected/*
 *~
 .*
 !.coveragerc
+!.bumpversion.cfg
 
 html/
 htmlcov/
