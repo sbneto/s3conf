@@ -39,7 +39,7 @@ def get_package_data(package):
     return {package: filepaths}
 
 
-version = '0.9.1'
+version = '0.9.2'
 
 if sys.argv[-1] == 'publish':
     if os.system("pip freeze | grep wheel"):
@@ -74,10 +74,10 @@ setup(
     setup_requires=[],
     tests_require=['pytest', 'pytest-cov'],
     extras_require={
-        'boto3': [
+        'aws': [
             'boto3>=1.4.4',
         ],
-        'google-cloud-storage': [
+        'gcp': [
             'google-cloud-storage>=1.15.0',
         ],
     },
