@@ -1,22 +1,19 @@
 sudo: required
+language: python
+python:
+  - '3.6'
 
 services:
   - docker
 
 before_install:
   - "./run_test_infra.sh"
-
-language: python
-python:
-  - '3.6'
-install: pip install tox-travis
-script: tox
-matrix:
-  fast_finish: true
-
+install:
+  - "pip install -r requirements.txt"
+script:
+  - "pytest"
 before_deploy:
   - "./build_dist.sh"
-
 deploy:
   - provider: releases
     skip_cleanup: true
