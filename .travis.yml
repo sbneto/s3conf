@@ -4,22 +4,34 @@ services:
   - docker
 
 before_install:
-  - ./run_test_infra.sh
-
+  - "./run_test_infra.sh"
 
 language: python
 python:
-- '3.6'
+  - '3.6'
 install: pip install tox-travis
 script: tox
 matrix:
   fast_finish: true
+
+before_deploy:
+  - "./build_dist.sh"
+
 deploy:
-  provider: pypi
-  user:
-    secure: BW8Rc82lGyYafz69p7chSne5qDp4a5xmkXE4pS6EpqNhyjd7i0O+x5O2d5fGcFrGlFjGTmm0njky0GQU7SMT2iH4d8jREdPQZg2MNeojrQk0d5fQVgWGhnbWF601y2m3qc7iStnS4ipM3MJaLA+JzcanWlx5b21TC0OHmcimZslewRXtT2ZYi/lo2z+mx6L+SfgPVsDA2Y+sdvbyrPpNinepVx+Es3LfT5qBLkZ8dSV8tTVPIIn7iGFYtMkyt1n1cjZO2WEC/XD+Lqs9GdMklYgeb0Xdny+BY6UeasOhFBocunvqQVsJ7L3QV5IeKYJmksVqZtExO2rn5v+/xBAiCASu1Bl/hQQ1Iu9CeljUz5+ZFj7ZeYPQ/8iIU4A1WVkWsSyHZYQAEcRJP01wbwbjjMHqtXESkUow6j1n2gJ2/Mw9CfjGOSVRibizKn2iKkjhJnWdWVoo7MUw7gkymSImlHAGg/o8en1jXoNLAfbxx8HrZ3B5QTCu5VP1smlVuNnYisWCW4YR8vDGe8L1iIwuMLsWQAP0QVaEkEK0ghhGZ3w4kaDwDPoLSUCaS+MaACPqtFLH0GvqQ2vlutN47NJVriH9rSsC93b1GWnWr0V4DTfHsOnDrMdDzXKqRa3Elx4F8j7nWNxT1zuX2mUSjrXfN873jRRbbMLLPK3V4xtbVNc=
-  password:
-    secure: jQR188Hdgw1Or5FvwxIKnz8BETzi2Y1l3chQZT5wcFfUPwtf3icfM1MDdinuRqF2eEPwtxPDZT55REfzZBSoeTddfcX7IPgzY7P/iIYvRFGJ/CXUI5xymOToK+2YpJCosHGAOjVX/BY78qzDlAPkHzqnwcVwVvvH63/ZN0yclut527L/QJQ5d6b/6Wnshy25jyMLHJcv0Ktt3IlAFkylIboF5+NI79rIQXledXTvUUsbis/B2OHkz2MDFWemHFcIbdnD2ftNSmBxAxtMRN5otuxgYjjqcta3Q6a4EmqDR+uXXWil/I65IcyEUzgG+DQm0HX45y6Jep2uvkmw7X7kHC5fpBa43wIsVjre0/PL9Q7lBQxnphwpOQOrAlTgDvv2wcuNclETCCZsmaKAIb9Gun+ohN6Vw7phmTJB+0Rd4UeplJVUplywRGVqb7ALRHpVG8TaFmjfYuzX3OwDiu1FeMgaaIcru214S+xCbm0iKcs2pzZiGllwtgtdcwZzUsyZ90Hxa1+mi1L3rIKJVdJjoLY6V7IbWkA80nOLuwwXXig06Sl1LsdwBmJNypdt8qEVNXWCMIfLpP/s3ophj+WBY9sdShngGK7zSiII4lD2ZDiptoCiDU5uQKOggqq7EldggG4JU5Oa4WG3us96rLFX4vcx/FXZHiq7iPxRpLoqULc=
-  on:
-    tags: true
-    branch: master
+  - provider: releases
+    skip_cleanup: true
+    api_key:
+      secure: Jvnb/rko0RyoIEVsmvg/2aRFHPQnrl1O/tqMOGU0Jkmg2F7tma7ruk5Sck17k+kwj63cvvZW2jaP5/DTk7/yT+WWV0GudmRfsPYPEmOQMP6Q9AQW9FKcoY+Byfy+YmPvBM8DISUnd7WuhKb9x7SPekJHYYBlTdF/13UhfUm/oW2r/iXmCVYVnsloZOHU2Z4PAhkg1OpOvDNUY2DKnIBuXxmDsaKjtgaJk7mVNRJnT+Rd0rk4Xv8dLQIjQWLOkmD5Gya+T2oDTH3wXYFQQMKEvtZcgWiTIbG76pxekWdynNABOf6cp5FpmeClyr3yQ2Movr+FjtKuXVtHm07UIpuPu/42MjsasXBucrJHVAN7O1c0ZaKd9n5U0ZTlrZ1jskzXnWObhS56okzn9SEr8J1EftXuDdWaNe8U0SP6NwTAb1a13gyGfXiVn6n+6MU5AgH7ycHxeDgIiY4IbnGiH23o1USTx7BNASCjSr2W2Hvzt//Sda2nicvVsO8PxGN5cFDNmK65LnkPz6iTNc/LpQeCVqahr3yDqus++5Ngldv5OJiSo3FWhDom+ZcbioBloxlEqh5mnnnE6t67/LhIUOpO/mfDq+JkHipmjLBwKQhgrRC1AOla6CwR4g16ovVw+394Qvjj0cvLLZocNlVfNdTLusn0TP/GTdYYTqPRIm0+Ulg=
+    file: dist/s3conf
+    on:
+      repo: sbneto/s3conf
+      tags: true
+      branch: master
+  - provider: pypi
+    user:
+      secure: BW8Rc82lGyYafz69p7chSne5qDp4a5xmkXE4pS6EpqNhyjd7i0O+x5O2d5fGcFrGlFjGTmm0njky0GQU7SMT2iH4d8jREdPQZg2MNeojrQk0d5fQVgWGhnbWF601y2m3qc7iStnS4ipM3MJaLA+JzcanWlx5b21TC0OHmcimZslewRXtT2ZYi/lo2z+mx6L+SfgPVsDA2Y+sdvbyrPpNinepVx+Es3LfT5qBLkZ8dSV8tTVPIIn7iGFYtMkyt1n1cjZO2WEC/XD+Lqs9GdMklYgeb0Xdny+BY6UeasOhFBocunvqQVsJ7L3QV5IeKYJmksVqZtExO2rn5v+/xBAiCASu1Bl/hQQ1Iu9CeljUz5+ZFj7ZeYPQ/8iIU4A1WVkWsSyHZYQAEcRJP01wbwbjjMHqtXESkUow6j1n2gJ2/Mw9CfjGOSVRibizKn2iKkjhJnWdWVoo7MUw7gkymSImlHAGg/o8en1jXoNLAfbxx8HrZ3B5QTCu5VP1smlVuNnYisWCW4YR8vDGe8L1iIwuMLsWQAP0QVaEkEK0ghhGZ3w4kaDwDPoLSUCaS+MaACPqtFLH0GvqQ2vlutN47NJVriH9rSsC93b1GWnWr0V4DTfHsOnDrMdDzXKqRa3Elx4F8j7nWNxT1zuX2mUSjrXfN873jRRbbMLLPK3V4xtbVNc=
+    password:
+      secure: jQR188Hdgw1Or5FvwxIKnz8BETzi2Y1l3chQZT5wcFfUPwtf3icfM1MDdinuRqF2eEPwtxPDZT55REfzZBSoeTddfcX7IPgzY7P/iIYvRFGJ/CXUI5xymOToK+2YpJCosHGAOjVX/BY78qzDlAPkHzqnwcVwVvvH63/ZN0yclut527L/QJQ5d6b/6Wnshy25jyMLHJcv0Ktt3IlAFkylIboF5+NI79rIQXledXTvUUsbis/B2OHkz2MDFWemHFcIbdnD2ftNSmBxAxtMRN5otuxgYjjqcta3Q6a4EmqDR+uXXWil/I65IcyEUzgG+DQm0HX45y6Jep2uvkmw7X7kHC5fpBa43wIsVjre0/PL9Q7lBQxnphwpOQOrAlTgDvv2wcuNclETCCZsmaKAIb9Gun+ohN6Vw7phmTJB+0Rd4UeplJVUplywRGVqb7ALRHpVG8TaFmjfYuzX3OwDiu1FeMgaaIcru214S+xCbm0iKcs2pzZiGllwtgtdcwZzUsyZ90Hxa1+mi1L3rIKJVdJjoLY6V7IbWkA80nOLuwwXXig06Sl1LsdwBmJNypdt8qEVNXWCMIfLpP/s3ophj+WBY9sdShngGK7zSiII4lD2ZDiptoCiDU5uQKOggqq7EldggG4JU5Oa4WG3us96rLFX4vcx/FXZHiq7iPxRpLoqULc=
+    on:
+      tags: true
+      branch: master
