@@ -285,9 +285,6 @@ def init(section, remote_file):
 
     s3conf init development s3://my-project/development.env
     """
-    if not remote_file.startswith('s3://'):
-        raise UsageError('REMOTE_FILE must be a S3-like path. E.g.:\n\n'
-                         's3conf init development s3://my-project/development.env')
     logger.debug('Running init command')
     settings = config.Settings(section=section)
     config_file = config.ConfigFileResolver(settings.config_file, section=section)
