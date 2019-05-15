@@ -39,7 +39,7 @@ def get_package_data(package):
     return {package: filepaths}
 
 
-version = '0.9.4'
+version = '0.9.5'
 
 if sys.argv[-1] == 'publish':
     if os.system("pip freeze | grep wheel"):
