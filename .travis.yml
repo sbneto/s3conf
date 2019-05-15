@@ -69,4 +69,6 @@ deploy:
     on:
       # tags = true makes travis ignore the branch option, so we check the tag with a regex
       # https://docs.travis-ci.com/user/deployment#conditional-releases-with-on
-      condition: $TRAVIS_OS_NAME = "linux" && $TRAVIS_TAG =~ ^[0-9]+\.[0-9]+\.[0-9]+
+      # trying to be smarter than travis using multiple conditions if simple replacement is made in
+      # if [[ <condition> ]]; then <deploy>; fi
+      condition: "$TRAVIS_OS_NAME = linux ]] && [[ $TRAVIS_TAG =~ ^[0-9]+\.[0-9]+\.[0-9]+"
