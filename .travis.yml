@@ -1,29 +1,60 @@
 sudo: required
+
 language: python
-python:
-  - '3.6'
+matrix:
+  fast_finish: true
+  include:
+    - os: 'linux'
+      python: '3.6'
+    - os: 'osx'
+      language: 'generic'
+      env: PYTHON=3.6.8
 
 services:
   - docker
 
 before_install:
-  - "./run_test_infra.sh"
-install:
-  - "pip install -r requirements.txt"
-script:
-  - "pytest"
-before_deploy:
-  - "./build_dist.sh"
+  - |
+    # https://pythonhosted.org/CodeChat/.travis.yml.html
+    if [ "$TRAVIS_OS_NAME" == "osx" ]; then
+      brew update
+      # https://github.com/yyuu/pyenv/wiki#suggested-build-environment
+      brew install openssl readline sqlite3 xz zlib
+      # https://github.com/jiansoung/issues-list/issues/13
+      export LDFLAGS="${LDFLAGS} -L/usr/local/opt/zlib/lib"
+      export CPPFLAGS="${CPPFLAGS} -I/usr/local/opt/zlib/include"
+      export LDFLAGS="${LDFLAGS} -L/usr/local/opt/sqlite/lib"
+      export CPPFLAGS="${CPPFLAGS} -I/usr/local/opt/sqlite/include"
+      export PKG_CONFIG_PATH="${PKG_CONFIG_PATH} /usr/local/opt/zlib/lib/pkgconfig"
+      export PKG_CONFIG_PATH="${PKG_CONFIG_PATH} /usr/local/opt/sqlite/lib/pkgconfig"
+      brew outdated pyenv || brew upgrade pyenv
+      pyenv install $PYTHON
+      export PYENV_VERSION=$PYTHON
+      eval "$(pyenv init -)"
+      pyenv shell
+      python --version
+    else
+      ./run_test_infra.sh
+    fi
+install: |
+  if [ "$TRAVIS_OS_NAME" == "linux" ]; then
+    pip install -r requirements.txt
+  fi
+script: |
+  if [ "$TRAVIS_OS_NAME" == "linux" ]; then
+    pytest
+  fi
+before_deploy: |
+  ./build_dist.sh $TRAVIS_OS_NAME
 deploy:
   - provider: releases
-    skip_cleanup: true
     api_key:
       secure: Jvnb/rko0RyoIEVsmvg/2aRFHPQnrl1O/tqMOGU0Jkmg2F7tma7ruk5Sck17k+kwj63cvvZW2jaP5/DTk7/yT+WWV0GudmRfsPYPEmOQMP6Q9AQW9FKcoY+Byfy+YmPvBM8DISUnd7WuhKb9x7SPekJHYYBlTdF/13UhfUm/oW2r/iXmCVYVnsloZOHU2Z4PAhkg1OpOvDNUY2DKnIBuXxmDsaKjtgaJk7mVNRJnT+Rd0rk4Xv8dLQIjQWLOkmD5Gya+T2oDTH3wXYFQQMKEvtZcgWiTIbG76pxekWdynNABOf6cp5FpmeClyr3yQ2Movr+FjtKuXVtHm07UIpuPu/42MjsasXBucrJHVAN7O1c0ZaKd9n5U0ZTlrZ1jskzXnWObhS56okzn9SEr8J1EftXuDdWaNe8U0SP6NwTAb1a13gyGfXiVn6n+6MU5AgH7ycHxeDgIiY4IbnGiH23o1USTx7BNASCjSr2W2Hvzt//Sda2nicvVsO8PxGN5cFDNmK65LnkPz6iTNc/LpQeCVqahr3yDqus++5Ngldv5OJiSo3FWhDom+ZcbioBloxlEqh5mnnnE6t67/LhIUOpO/mfDq+JkHipmjLBwKQhgrRC1AOla6CwR4g16ovVw+394Qvjj0cvLLZocNlVfNdTLusn0TP/GTdYYTqPRIm0+Ulg=
-    file: dist/s3conf
+    file: dist/s3conf.$TRAVIS_OS_NAME.tar.gz
     on:
       repo: sbneto/s3conf
       tags: true
-      branch: master
+#      branch: master
   - provider: pypi
     user:
       secure: BW8Rc82lGyYafz69p7chSne5qDp4a5xmkXE4pS6EpqNhyjd7i0O+x5O2d5fGcFrGlFjGTmm0njky0GQU7SMT2iH4d8jREdPQZg2MNeojrQk0d5fQVgWGhnbWF601y2m3qc7iStnS4ipM3MJaLA+JzcanWlx5b21TC0OHmcimZslewRXtT2ZYi/lo2z+mx6L+SfgPVsDA2Y+sdvbyrPpNinepVx+Es3LfT5qBLkZ8dSV8tTVPIIn7iGFYtMkyt1n1cjZO2WEC/XD+Lqs9GdMklYgeb0Xdny+BY6UeasOhFBocunvqQVsJ7L3QV5IeKYJmksVqZtExO2rn5v+/xBAiCASu1Bl/hQQ1Iu9CeljUz5+ZFj7ZeYPQ/8iIU4A1WVkWsSyHZYQAEcRJP01wbwbjjMHqtXESkUow6j1n2gJ2/Mw9CfjGOSVRibizKn2iKkjhJnWdWVoo7MUw7gkymSImlHAGg/o8en1jXoNLAfbxx8HrZ3B5QTCu5VP1smlVuNnYisWCW4YR8vDGe8L1iIwuMLsWQAP0QVaEkEK0ghhGZ3w4kaDwDPoLSUCaS+MaACPqtFLH0GvqQ2vlutN47NJVriH9rSsC93b1GWnWr0V4DTfHsOnDrMdDzXKqRa3Elx4F8j7nWNxT1zuX2mUSjrXfN873jRRbbMLLPK3V4xtbVNc=
@@ -32,3 +63,4 @@ deploy:
     on:
       tags: true
       branch: master
+      condition: $TRAVIS_OS_NAME = linux
