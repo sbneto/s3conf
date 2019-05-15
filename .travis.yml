@@ -67,6 +67,9 @@ deploy:
     password:
       secure: jQR188Hdgw1Or5FvwxIKnz8BETzi2Y1l3chQZT5wcFfUPwtf3icfM1MDdinuRqF2eEPwtxPDZT55REfzZBSoeTddfcX7IPgzY7P/iIYvRFGJ/CXUI5xymOToK+2YpJCosHGAOjVX/BY78qzDlAPkHzqnwcVwVvvH63/ZN0yclut527L/QJQ5d6b/6Wnshy25jyMLHJcv0Ktt3IlAFkylIboF5+NI79rIQXledXTvUUsbis/B2OHkz2MDFWemHFcIbdnD2ftNSmBxAxtMRN5otuxgYjjqcta3Q6a4EmqDR+uXXWil/I65IcyEUzgG+DQm0HX45y6Jep2uvkmw7X7kHC5fpBa43wIsVjre0/PL9Q7lBQxnphwpOQOrAlTgDvv2wcuNclETCCZsmaKAIb9Gun+ohN6Vw7phmTJB+0Rd4UeplJVUplywRGVqb7ALRHpVG8TaFmjfYuzX3OwDiu1FeMgaaIcru214S+xCbm0iKcs2pzZiGllwtgtdcwZzUsyZ90Hxa1+mi1L3rIKJVdJjoLY6V7IbWkA80nOLuwwXXig06Sl1LsdwBmJNypdt8qEVNXWCMIfLpP/s3ophj+WBY9sdShngGK7zSiII4lD2ZDiptoCiDU5uQKOggqq7EldggG4JU5Oa4WG3us96rLFX4vcx/FXZHiq7iPxRpLoqULc=
     on:
+      repo: sbneto/s3conf
+      # what controls the deploy is the tag, not the branch
+      all_branches: true
       # tags = true makes travis ignore the branch option, so we check the tag with a regex
       # https://docs.travis-ci.com/user/deployment#conditional-releases-with-on
       condition: $TRAVIS_TAG =~ ^[0-9]+\.[0-9]+\.[0-9]+ && $TRAVIS_OS_NAME = linux
