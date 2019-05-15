@@ -9,6 +9,7 @@ matrix:
     - os: 'osx'
       language: 'generic'
       env: PYTHON=3.6.8
+      if: tag IS present
 
 services:
   - docker
@@ -57,7 +58,6 @@ deploy:
     on:
       repo: sbneto/s3conf
       tags: true
-      branch: master
   - provider: pypi
     user:
       secure: BW8Rc82lGyYafz69p7chSne5qDp4a5xmkXE4pS6EpqNhyjd7i0O+x5O2d5fGcFrGlFjGTmm0njky0GQU7SMT2iH4d8jREdPQZg2MNeojrQk0d5fQVgWGhnbWF601y2m3qc7iStnS4ipM3MJaLA+JzcanWlx5b21TC0OHmcimZslewRXtT2ZYi/lo2z+mx6L+SfgPVsDA2Y+sdvbyrPpNinepVx+Es3LfT5qBLkZ8dSV8tTVPIIn7iGFYtMkyt1n1cjZO2WEC/XD+Lqs9GdMklYgeb0Xdny+BY6UeasOhFBocunvqQVsJ7L3QV5IeKYJmksVqZtExO2rn5v+/xBAiCASu1Bl/hQQ1Iu9CeljUz5+ZFj7ZeYPQ/8iIU4A1WVkWsSyHZYQAEcRJP01wbwbjjMHqtXESkUow6j1n2gJ2/Mw9CfjGOSVRibizKn2iKkjhJnWdWVoo7MUw7gkymSImlHAGg/o8en1jXoNLAfbxx8HrZ3B5QTCu5VP1smlVuNnYisWCW4YR8vDGe8L1iIwuMLsWQAP0QVaEkEK0ghhGZ3w4kaDwDPoLSUCaS+MaACPqtFLH0GvqQ2vlutN47NJVriH9rSsC93b1GWnWr0V4DTfHsOnDrMdDzXKqRa3Elx4F8j7nWNxT1zuX2mUSjrXfN873jRRbbMLLPK3V4xtbVNc=
