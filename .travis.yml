@@ -30,6 +30,8 @@ before_install:
       brew outdated pyenv || brew upgrade pyenv
       pyenv install $PYTHON
       export PYENV_VERSION=$PYTHON
+      # https://github.com/pyenv/pyenv/issues/1095
+      export PYTHON_CONFIGURE_OPTS="--enable-framework ${PYTHON_CONFIGURE_OPTS}"
       eval "$(pyenv init -)"
       pyenv shell
       python --version
