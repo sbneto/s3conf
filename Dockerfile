@@ -1,4 +1,4 @@
-FROM python:3.6-alpine
+FROM python:3.6.8-alpine3.8
 
 ENV PYINSTALLER_VERSION=3.4
 
@@ -9,24 +9,13 @@ RUN apk --update --no-cache add \
     gcc \
     git \
     pwgen \
+    make \
+    g++ \
     && pip install --upgrade pip
-
-#RUN apt-get update \
-#    && echo "deb http://ftp.linux-foundation.org/pub/lsb/repositories/debian lsb-4.0 main" >> /etc/apt/sources.list \
-#    && apt-get update \
-#    && apt-get install -y --no-install-recommends --allow-unauthenticated \
-#        build-essential \
-#        libc6-dev \
-#        zlib1g-dev \
-#        git \
-#        lsb lsb-build-cc \
-#    && apt-get autoremove -yqq \
-#    && apt-get clean \
-#    && rm -Rf /tmp/* /var/tmp/* /var/lib/apt/lists/*
 
 # Install pycrypto so --key can be used with PyInstaller
 RUN pip install \
-    pycrypto pyinstaller
+    pycrypto
 
 # Build bootloader for alpine
 # https://github.com/six8/pyinstaller-alpine/pull/6
@@ -35,6 +24,19 @@ RUN mkdir /tmp/pyinstaller \
     && wget https://github.com/pyinstaller/pyinstaller/archive/v$PYINSTALLER_VERSION.zip \
     && unzip -d . v$PYINSTALLER_VERSION.zip \
     && cd /tmp/pyinstaller/pyinstaller-$PYINSTALLER_VERSION/bootloader \
-    && CFLAGS="-Wno-stringop-overflow" python ./waf --no-lsb configure all \
-    && pip install .. \
+    && CFLAGS="-Wno-stringop-overflow -no-pie" python ./waf distclean all --no-lsb --gcc -v \
+    && cd .. \
+    && python setup.py install \
     && rm -Rf /tmp/pyinstaller
+
+COPY . /app
+WORKDIR /app
+
+RUN ln -s /lib/ld-musl-x86_64.so.1 ldd \
+    && pip install -r requirements.txt \
+    && pyinstaller pyinstaller.py --name s3conf-$(uname -s)-$(uname -m)-alpine --onefile --hidden-import=configparser --additional-hooks-dir=hooks
+
+# Someday it might work...
+#RUN pip install patchelf-wrapper scons \
+#    && CC="/usr/bin/x86_64-alpine-linux-musl-gcc" CFLAGS="-Wno-stringop-overflow -no-pie" pip https://github.com/JonathonReinhart/staticx/archive/master.zip \
+#    && staticx --debug --strip dist/s3conf-$(uname -s)-$(uname -m)-alpine dist/s3conf
