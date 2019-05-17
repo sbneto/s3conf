@@ -54,7 +54,7 @@ before_deploy: |
   export S3CONF_CLIENT=s3conf-$(uname -s)-$(uname -m)
 
   if [ "$TRAVIS_OS_NAME" == "linux" ]; then
-    docker build -t s3conf-alpine
+    docker build -t s3conf-alpine .
     docker run --rm s3conf-alpine cat /app/dist/s3conf-Linux-x86_64-alpine > dist/s3conf-Linux-x86_64-alpine
   fi
 
