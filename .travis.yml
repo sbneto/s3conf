@@ -49,13 +49,14 @@ script: |
   fi
 before_deploy: |
   pip install -r requirements.txt
+  pip install pyinstaller
   pyinstaller pyinstaller.py --name s3conf-$(uname -s)-$(uname -m) --onefile --hidden-import=configparser --additional-hooks-dir=hooks
   rm -rf build s3conf-$(uname -s)-$(uname -m).spec
   export S3CONF_CLIENT=s3conf-$(uname -s)-$(uname -m)
 
   if [ "$TRAVIS_OS_NAME" == "linux" ]; then
     docker build -t s3conf-alpine .
-    docker run --rm s3conf-alpine cat /app/dist/s3conf-Linux-x86_64-alpine > dist/s3conf-Linux-x86_64-alpine
+    docker run --rm s3conf-alpine cat /app/dist/s3conf-Linux-x86_64-alpine > $(pwd)/dist/s3conf-Linux-x86_64-alpine
   fi
 
 deploy:
