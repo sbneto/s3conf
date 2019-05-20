@@ -13,6 +13,13 @@ sudo curl -L "https://github.com/sbneto/s3conf/releases/download/0.9.5/s3conf-$(
 sudo chmod 755 /usr/local/bin/s3conf
 ```
 
+For Alpine linux, use
+
+```bash
+sudo curl -L "https://github.com/sbneto/s3conf/releases/download/0.9.5/s3conf-$(uname -s)-$(uname -m)-alpine" -o /usr/local/bin/s3conf
+sudo chmod 755 /usr/local/bin/s3conf
+```
+
 If it is not available for your platform, you can use pip:
 
 ```python

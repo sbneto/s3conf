@@ -1,5 +1,5 @@
 boto3~=1.9.148
-click~=6.7
+click~=7.0
 python-editor~=1.0.3
 click-log~=0.2.1
 pytest~=3.6.3
@@ -9,4 +9,3 @@ configobj~=5.0.6
 google-cloud-storage~=1.15.0
 bumpversion~=0.5.3
 requests~=2.21.0
-pyinstaller~=3.4
