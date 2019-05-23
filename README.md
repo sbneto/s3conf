@@ -50,6 +50,12 @@ S3CONF = s3://my-dev-bucket/dev-env/myfile.env
 If you have a `aws-cli` working, `s3conf` will user your default credentials. This should already be 
 enough to get you started.
 
+This is also true for GCP:
+
+```bash
+gcloud auth application-default login
+```
+
 #### Manually setting the credentials
 
 If you do not have a configured aws-cli, the client will search for these authentication variables in
