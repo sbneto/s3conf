@@ -20,10 +20,10 @@ sudo curl -L "https://github.com/sbneto/s3conf/releases/download/0.9.6/s3conf-$(
 sudo chmod 755 /usr/local/bin/s3conf
 ```
 
-If it is not available for your platform, you can use pip:
+If it is not available for your platform, you can use pip to install with one or both extras (aws and gcp):
 
 ```python
-pip install s3conf
+pip install s3conf[aws,gcp]
 ```
 
 # Usage
@@ -47,10 +47,13 @@ S3CONF = s3://my-dev-bucket/dev-env/myfile.env
 
 ### S3 Credentials
 
-If you have a `aws-cli` working, `s3conf` will user your default credentials. This should already be 
-enough to get you started.
+If you have a `aws-cli` working, `s3conf` will user your default credentials. This can be done with:
 
-This is also true for GCP:
+```bash
+aws configure
+```
+
+Similarly, `s3conf` looks for default gcp credentials.
 
 ```bash
 gcloud auth application-default login
