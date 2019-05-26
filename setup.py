@@ -79,6 +79,7 @@ setup(
         ],
         'gcp': [
             'google-cloud-storage>=1.15.0',
+            'crc32c>=1.7',
         ],
     },
     classifiers=[
