@@ -84,7 +84,7 @@ def main(ctx, edit):
 @click.option('--create',
               '-c',
               is_flag=True,
-              help='When trying to edit a file, create it if it does not exist.')
+              help='Create the remote environment file if it does not exist.')
 def env(section, map_files, phusion, phusion_path, quiet, edit, create):
     """
     Reads the file defined by the S3CONF variable and output its contents to stdout. Logs are printed to stderr.
@@ -95,8 +95,11 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(settings=settings)
 
+        if create:
+            conf.create_envfile()
+
         if edit:
-            conf.edit()
+            conf.edit_envfile()
         else:
             with conf.get_envfile() as env_file:
                 env_vars = env_file.as_dict()
@@ -223,11 +226,7 @@ def exec_command(ctx, section, command, map_files):
 @click.argument('section', cls=SectionArgument)
 @click.argument('value',
                 required=False)
-@click.option('--create',
-              '-c',
-              is_flag=True,
-              help='When trying to set a variable, create the file if it does not exist.')
-def set_variable(section, value, create):
+def set_variable(section, value):
     """
     Set value of a variable in an environment file for the given section.
     If the variable is already defined, its value is replaced, otherwise, it is added to the end of the file.
