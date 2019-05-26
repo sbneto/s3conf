@@ -8,7 +8,7 @@ from functools import lru_cache
 
 import editor
 
-from .storage.storages import S3Storage, GCStorage, LocalStorage
+from .storage.storages import S3Storage, GCStorage, LocalStorage, s3etag
 from .storage.files import File
 from .storage.exceptions import FileDoesNotExist
 
@@ -49,6 +49,13 @@ def partition_path(path):
     return protocol, bucket, path
 
 
+def build_path(protocol, bucket, path):
+    if protocol == 'file':
+        return path
+    else:
+        return f'{protocol}://{bucket}/{path}'
+
+
 def get_s3_storage(settings, file_class, bucket):
     return S3Storage(
         aws_access_key_id=settings.get('S3CONF_ACCESS_KEY_ID') or settings.get('AWS_ACCESS_KEY_ID'),
@@ -72,10 +79,10 @@ def get_gs_storage(settings, file_class, bucket):
 
 
 def list_all_files(path):
-    if path.is_dir():
-        mapping = iter(Path(root).joinpath(name).resolve() for root, _, names in os.walk(path) for name in names)
+    if Path(path).is_dir():
+        mapping = iter(str(Path(root).joinpath(name).resolve()) for root, _, names in os.walk(path) for name in names)
     else:
-        mapping = [path]
+        mapping = [str(path)]
     return mapping
 
 
@@ -102,39 +109,68 @@ class StorageMapper:
         logger.debug('Getting storage for %s %s', protocol, bucket)
         return _make_storage(self.settings, protocol, bucket)
 
-    def map(self, source_path, target_path):
+    def expand_path(self, source_path, target_path):
         source = self.storage(source_path)
-        _, _, source_path = partition_path(source_path)
-        _, _, target_path = partition_path(target_path)
+        source_protocol, source_bucket, source_path = partition_path(source_path)
+        target_protocol, target_bucket, target_path = partition_path(target_path)
         files = {file_path: etag for etag, file_path in source.list(source_path)}
         is_dir = False if len(files) == 1 and source_path in files else True
         if not is_dir:
-            yield files[source_path], source_path, target_path
+            yield files[source_path], \
+                  build_path(source_protocol, source_bucket, source_path), \
+                  build_path(target_protocol, target_bucket, target_path)
         else:
-            for file_path, etag in files.items():
-                yield etag, file_path, os.path.join(target_path, os.path.relpath(file_path, source_path))
+            for source_file_path, source_hash in files.items():
+                target_file_path = os.path.join(target_path, os.path.relpath(source_file_path, source_path))
+                yield source_hash, \
+                      build_path(source_protocol, source_bucket, source_file_path), \
+                      build_path(target_protocol, target_bucket, target_file_path)
 
-    def prepare_copy_list(self, source_path, target_path, force=False):
-        hashes = []
-        to_copy = []
-        target = self.storage(target_path)
-        _, _, target_path = partition_path(target_path)
-        if not force:
-            target_hashes = {os.path.join(target_path, file_path): etag for etag, file_path in target.list(target_path)}
-        for etag, source_file, target_file in self.map(source_path, target_path):
-            if force or target_file not in target_hashes or target_hashes[target_file] != etag:
-                to_copy.append((source_file, target_file))
-            hashes.append((source_file, target_file, etag))
-        return hashes, to_copy
+    def list(self, path):
+        target = self.storage(path)
+        protocol, bucket, sripped_path = partition_path(path)
+        return {build_path(protocol, bucket, file_path): etag for etag, file_path in target.list(sripped_path)}
 
-    def copy(self, source_path, target_path, force=False):
-        hashes, to_copy = self.prepare_copy_list(source_path, target_path, force)
+    def _define_hash_strategy(self, source_path, target_path):
         source = self.storage(source_path)
         target = self.storage(target_path)
-        for source_file, target_file in to_copy:
+        if not source.hash_method and not target.hash_method:
+            # use s3 strategy as it does not create any external dependencies
+            source.hash_method = target.hash_method = s3etag
+        elif not source.hash_method:
+            source.hash_method = target.hash_method
+        elif not target.hash_method:
+            target.hash_method = source.hash_method
+        elif target.hash_method != source.hash_method:
+            raise ValueError('Cannot find a common hash strategy')
+
+    def prepare_copy_list(self, source_path, target_path, force=False):
+        to_copy = []
+        target_hashes = {}
+        final_state = []
+
+        # if we are not forcing the copy, we check the hashes to avoid unnecessary copies
+        if not force:
+            self._define_hash_strategy(source_path, target_path)
+            target_hashes = self.list(target_path)
+
+        for source_hash, source_file, target_file in self.expand_path(source_path, target_path):
+            if target_file not in target_hashes or target_hashes[target_file] != source_hash:
+                to_copy.append((source_hash, source_file, target_file))
+            final_state.append((source_hash, source_file, target_file))
+
+        return final_state, to_copy
+
+    def copy(self, source_path, target_path, force=False):
+        final_state, copy_list = self.prepare_copy_list(source_path, target_path, force)
+        source = self.storage(source_path)
+        target = self.storage(target_path)
+        for _, source_file, target_file in copy_list:
+            _, _, source_file = partition_path(source_file)
+            _, _, target_file = partition_path(target_file)
             with source.open(source_file) as source_stream, target.open(target_file, 'wb') as target_stream:
                 copyfileobj(source_stream, target_stream)
-        return hashes
+        return final_state
 
 
 class BaseFile(File):
