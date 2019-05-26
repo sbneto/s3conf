@@ -96,7 +96,7 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
         conf = s3conf.S3Conf(settings=settings)
 
         if edit:
-            conf.edit(create=create)
+            conf.edit()
         else:
             with conf.get_envfile() as env_file:
                 env_vars = env_file.as_dict()
@@ -124,8 +124,8 @@ def add(section, local_path):
     try:
         settings = config.Settings(section=section)
         local_path = Path(local_path).resolve().relative_to(settings.root_folder)
-        remote_path = os.path.join(os.path.dirname(settings.environment_file_path), 'files', local_path)
-        settings.add_mapping(remote_path, local_path)
+        remote_path = os.path.join(os.path.dirname(settings.environment_file_path), 'files', str(local_path))
+        settings.add_mapping(remote_path, str(local_path))
         config_file = config.ConfigFileResolver(settings.config_file, section=section)
         config_file.set('S3CONF_MAP', settings.serialize_mappings())
         config_file.save()
@@ -143,7 +143,7 @@ def rm(section, local_path):
     try:
         settings = config.Settings(section=section)
         local_path = Path(local_path).resolve().relative_to(settings.root_folder)
-        settings.rm_mapping(local_path)
+        settings.rm_mapping(str(local_path))
         config_file = config.ConfigFileResolver(settings.config_file, section=section)
         config_file.set('S3CONF_MAP', settings.serialize_mappings())
         config_file.save()
@@ -243,7 +243,7 @@ def set_variable(section, value, create):
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(settings=settings)
 
-        with conf.get_envfile(create=create) as env_vars:
+        with conf.get_envfile(mode='r+') as env_vars:
             env_vars.set(value)
     except EnvfilePathNotDefinedError:
         raise EnvfilePathNotDefinedUsageError()
@@ -268,7 +268,7 @@ def unset_variable(section, value):
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(settings=settings)
 
-        with conf.get_envfile() as env_vars:
+        with conf.get_envfile(mode='r+') as env_vars:
             env_vars.unset(value)
     except EnvfilePathNotDefinedError:
         raise EnvfilePathNotDefinedUsageError()

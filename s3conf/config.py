@@ -25,7 +25,7 @@ def _lookup_root_folder(current_path='.'):
         entry = path_items[config_file_name]
         if entry.is_file():
             logger.debug('Root folder detected: %s', current_path)
-            return current_path
+            return str(current_path)
     return _lookup_root_folder(current_path.parent)
 
 
@@ -75,14 +75,17 @@ class ConfigFileResolver:
 class Settings:
     def __init__(self, section=None, config_file=None):
         if config_file:
-            self.config_file = Path(config_file).resolve()
-            self.root_folder = Path(self.config_file).parent
+            config_file = Path(config_file).resolve()
+            root_folder = Path(config_file).parent
         else:
-            self.root_folder = _lookup_root_folder().resolve()
-            self.config_file = self.root_folder.joinpath(f'{CONFIG_NAME}.ini')
-        self.cache_dir = self.root_folder.joinpath(f'.{CONFIG_NAME}')
-        self.hash_file = self.cache_dir.joinpath('md5')
-        self.default_config_file = self.cache_dir.joinpath('default.ini')
+            root_folder = Path(_lookup_root_folder()).resolve()
+            config_file = root_folder.joinpath(f'{CONFIG_NAME}.ini')
+        self.root_folder = str(root_folder)
+        self.config_file = str(config_file)
+        cache_dir = root_folder.joinpath(f'.{CONFIG_NAME}')
+        self.cache_dir = str(cache_dir)
+        self.hash_file = str(cache_dir.joinpath('remote_hashes'))
+        self.default_config_file = str(cache_dir.joinpath('default.ini'))
         self.section = section
         logger.debug('Settings paths:\n%s\n%s\n%s\n%s',
                      self.root_folder,
@@ -130,19 +133,19 @@ class Settings:
 
     def add_mapping(self, remote_path, local_path):
         local_path = Path(local_path)
-        local_path = self.root_folder.joinpath(local_path.relative_to(local_path.root))
-        self.file_mappings[local_path] = remote_path
+        local_path = Path(self.root_folder).joinpath(local_path.relative_to(local_path.root))
+        self.file_mappings[str(local_path)] = remote_path
 
     def rm_mapping(self, local_path):
         local_path = Path(local_path)
         local_path = self.root_folder.joinpath(local_path.relative_to(local_path.root))
-        del self.file_mappings[local_path]
+        del self.file_mappings[str(local_path)]
 
     def serialize_mappings(self):
         file_mappings = {}
         for local_path, remote_path in self.file_mappings.items():
-            relative_local_path = local_path.relative_to(self.root_folder)
-            file_mappings[relative_local_path] = remote_path
+            relative_local_path = Path(local_path).relative_to(self.root_folder)
+            file_mappings[str(relative_local_path)] = remote_path
         return ';'.join(f'{remote_path}:{local_path}' for local_path, remote_path in file_mappings.items())
 
     def __getitem__(self, item):
