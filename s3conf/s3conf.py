@@ -55,19 +55,18 @@ class S3Conf:
         return self._storages
 
     def verify_cache(self):
-        self.settings.cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_dir = Path(self.settings.cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
         default_config_file = config.ConfigFileResolver(self.settings.default_config_file, section='DEFAULT')
         default_config_file.save()
-        gitignore_file_path = self.settings.cache_dir.joinpath('.gitignore')
+        gitignore_file_path = cache_dir.joinpath('.gitignore')
         open(gitignore_file_path, 'w').write('*\n')
 
     def check_remote_changes(self):
-        local_hashes = json.load(open(self.settings.hash_file)) if self.settings.hash_file.exists() else {}
+        local_hashes = json.load(open(self.settings.hash_file)) if Path(self.settings.hash_file).exists() else {}
         for local_path, remote_path in self.settings.file_mappings.items():
-            remote = self.storages.storage(remote_path)
-            _, _, parsed_remote_path = partition_path(remote_path)
-            remote_hashes = {file_path: etag for etag, file_path in remote.list(parsed_remote_path)}
-            for etag, local_file, remote_file in self.storages.map(local_path, remote_path):
+            remote_hashes = self.storages.list(remote_path)
+            for _, local_file, remote_file in self.storages.expand_path(local_path, remote_path):
                 local_hash = local_hashes.get(str(local_file))
                 remote_hash = remote_hashes.get(str(remote_file))
                 if local_hash:
@@ -82,7 +81,7 @@ class S3Conf:
         hashes = {}
         for local_path, remote_path in self.settings.file_mappings.items():
             copy_hashes = self.storages.copy(local_path, remote_path)
-            hashes.update({str(local_file): md5 for local_file, _, md5 in copy_hashes})
+            hashes.update({str(local_file): local_hash for local_hash, local_file, _ in copy_hashes})
         self.verify_cache()
         json.dump(hashes, open(self.settings.hash_file, 'w'), indent=4)
         return hashes
@@ -91,19 +90,17 @@ class S3Conf:
         hashes = {}
         for local_path, remote_path in self.settings.file_mappings.items():
             copy_hashes = self.storages.copy(remote_path, local_path)
-            hashes.update({str(local_file): md5 for _, local_file, md5 in copy_hashes})
+            hashes.update({str(local_file): remote_hash for remote_hash, _, local_file in copy_hashes})
         self.verify_cache()
         json.dump(hashes, open(self.settings.hash_file, 'w'), indent=4)
         return hashes
 
-    def get_envfile(self, create=False):
+    def get_envfile(self, mode='r'):
         logger.info('Loading configs from {}'.format(self.settings.environment_file_path))
         remote_storage = self.storages.storage(self.settings.environment_file_path)
         _, _, path = partition_path(self.settings.environment_file_path)
-        envfile_exist = bool(list(remote_storage.list(path)))
-        mode = 'w+' if not envfile_exist and create else 'r+'
         return EnvFile.from_file(remote_storage.open(path, mode=mode))
 
-    def edit(self, create=False):
-        with self.get_envfile(create=create) as envfile:
+    def edit(self):
+        with self.get_envfile(mode='r+') as envfile:
             envfile.edit()
