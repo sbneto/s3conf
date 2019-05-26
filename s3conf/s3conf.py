@@ -96,11 +96,22 @@ class S3Conf:
         return hashes
 
     def get_envfile(self, mode='r'):
-        logger.info('Loading configs from {}'.format(self.settings.environment_file_path))
+        logger.info('Loading configs from %s', self.settings.environment_file_path)
         remote_storage = self.storages.storage(self.settings.environment_file_path)
         _, _, path = partition_path(self.settings.environment_file_path)
         return EnvFile.from_file(remote_storage.open(path, mode=mode))
 
-    def edit(self):
+    def edit_envfile(self):
         with self.get_envfile(mode='r+') as envfile:
             envfile.edit()
+
+    def create_envfile(self):
+        logger.info('Trying to create envifile %s', self.settings.environment_file_path)
+        remote_storage = self.storages.storage(self.settings.environment_file_path)
+        _, _, path = partition_path(self.settings.environment_file_path)
+        envfile_exist = bool(list(remote_storage.list(path)))
+        if envfile_exist:
+            logger.warning('%s already exist', self.settings.environment_file_path)
+        else:
+            with self.get_envfile(mode='w') as _:
+                pass
