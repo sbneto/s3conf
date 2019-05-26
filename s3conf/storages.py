@@ -217,14 +217,10 @@ class EnvFile(BaseFile):
         return obj
 
     def as_dict(self):
-        env_dict = {}
-        try:
-            self.seek(0)
-            lines = self.read().splitlines()
-            lines = [line for line in lines if line and not line.startswith('#') and '=' in line]
-            env_dict = dict(parse_env_var(line) for line in lines)
-        except FileNotFoundError:
-            pass
+        self.seek(0)
+        lines = self.read().splitlines()
+        lines = [line for line in lines if line and not line.startswith('#') and '=' in line]
+        env_dict = dict(parse_env_var(line) for line in lines)
         return env_dict
 
     def set(self, value):
