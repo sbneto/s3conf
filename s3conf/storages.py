@@ -157,6 +157,8 @@ class StorageMapper:
         for source_hash, source_file, target_file in self.expand_path(source_path, target_path):
             if target_file not in target_hashes or target_hashes[target_file] != source_hash:
                 to_copy.append((source_hash, source_file, target_file))
+            else:
+                logger.info('Skipping (no changes): %s -> %s', source_file, target_file)
             final_state.append((source_hash, source_file, target_file))
 
         return final_state, to_copy
