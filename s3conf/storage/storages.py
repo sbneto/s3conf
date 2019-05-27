@@ -21,13 +21,14 @@ except ImportError:
 
 try:
     from google.cloud import storage
-
+    from crc32c import crc32
+    import base64
     EXTRAS.append(storage)
 except ImportError:
     pass
 
 if not EXTRAS:
-    raise ImportError('At least one extra from [boto3, google-cloud-storage] must be installed.')
+    raise ImportError('At least one extra from [aws, gcp] must be installed.')
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ class BaseStorage:
         if file_class and not issubclass(file_class, File):
             raise TypeError(f'FileCls must inherit from File')
         self.file_class = file_class or File
+        self.hash_method = None
 
     def read_into_stream(self, path, stream=None):
         raise NotImplementedError()
@@ -59,6 +61,38 @@ class BaseStorage:
 @lru_cache()
 def get_s3_bucket(_storage, bucket):
     return _storage.s3.Bucket(bucket)
+
+
+def s3etag(file_like,
+           multipart_threshold=8 * 1024 * 1024,
+           multipart_chunksize=8 * 1024 * 1024):
+    """
+    Returns the md5 hash that will match the ETag in S3
+    https://stackoverflow.com/questions/6591047/etag-definition-changed-in-amazon-s3/28877788#28877788
+    https://github.com/boto/boto3/blob/0cc6042615fd44c6822bd5be5a4019d0901e5dd2/boto3/s3/transfer.py#L169
+    """
+    md5hash = hashlib.md5()
+    file_like.seek(0)
+    filesize = 0
+    block_count = 0
+    md5string = b''
+    for block in iter(lambda: file_like.read(multipart_chunksize), b''):
+        md5hash = hashlib.md5()
+        md5hash.update(block)
+        md5string += md5hash.digest()
+        filesize += len(block)
+        block_count += 1
+
+    if filesize > multipart_threshold:
+        md5hash = hashlib.md5()
+        md5hash.update(md5string)
+        md5hash = md5hash.hexdigest() + "-" + str(block_count)
+    else:
+        md5hash = md5hash.hexdigest()
+
+    file_like.seek(0)
+    # https://github.com/aws/aws-sdk-net/issues/815
+    return f'"{md5hash}"'
 
 
 class S3Storage(BaseStorage):
@@ -80,6 +114,7 @@ class S3Storage(BaseStorage):
         self.use_ssl = use_ssl
         self.endpoint_url = endpoint_url
         self._resource = None
+        self.hash_method = s3etag
 
     @property
     def s3(self):
@@ -151,12 +186,27 @@ def get_gcs_bucket(_storage, bucket):
     return _storage.gcs.get_bucket(bucket)
 
 
+def gcs_crc32c(file_like):
+    """
+    https://stackoverflow.com/questions/52686848/does-google-cloud-storage-client-in-python-check-crc-or-md5-automatically
+    """
+    # Read data and checksum - read whole file in memory right now
+    # TODO: read in chuncks
+    file_like.seek(0)
+    checksum = crc32(file_like.read())
+    # Convert into a bytes type that can be base64 encoded
+    base64_crc32c = base64.b64encode(checksum.to_bytes(length=4, byteorder='big')).decode('utf-8')
+    # Print the Base64 encoded CRC32C
+    return base64_crc32c
+
+
 class GCStorage(BaseStorage):
     def __init__(self, credential_file=None, bucket=None, **kwargs):
         super().__init__(**kwargs)
         self.bucket = bucket
         self.credential_file = credential_file
         self._resource = None
+        self.hash_method = gcs_crc32c
 
     @property
     def gcs(self):
@@ -197,39 +247,7 @@ class GCStorage(BaseStorage):
         path = path.rstrip('/')
         for obj in bucket.list_blobs(prefix=path):
             if not obj.name.endswith('/'):
-                yield obj.etag, obj.name
-
-
-# Function : md5sum
-# Purpose : Get the md5 hash of a file stored in S3
-# Returns : Returns the md5 hash that will match the ETag in S3
-# https://stackoverflow.com/questions/6591047/etag-definition-changed-in-amazon-s3/28877788#28877788
-# https://github.com/boto/boto3/blob/0cc6042615fd44c6822bd5be5a4019d0901e5dd2/boto3/s3/transfer.py#L169
-def s3etag(file_like,
-           multipart_threshold=8 * 1024 * 1024,
-           multipart_chunksize=8 * 1024 * 1024):
-    md5hash = hashlib.md5()
-    file_like.seek(0)
-    filesize = 0
-    block_count = 0
-    md5string = b''
-    for block in iter(lambda: file_like.read(multipart_chunksize), b''):
-        md5hash = hashlib.md5()
-        md5hash.update(block)
-        md5string += md5hash.digest()
-        filesize += len(block)
-        block_count += 1
-
-    if filesize > multipart_threshold:
-        md5hash = hashlib.md5()
-        md5hash.update(md5string)
-        md5hash = md5hash.hexdigest() + "-" + str(block_count)
-    else:
-        md5hash = md5hash.hexdigest()
-
-    file_like.seek(0)
-    # https://github.com/aws/aws-sdk-net/issues/815
-    return f'"{md5hash}"'
+                yield obj.crc32c, obj.name
 
 
 class LocalStorage(BaseStorage):
@@ -261,8 +279,9 @@ class LocalStorage(BaseStorage):
         if path.is_dir():
             for root, dirs, files in os.walk(path):
                 for file in files:
-                    yield s3etag(open(Path(root).joinpath(file), 'rb')), Path(root).joinpath(file)
+                    file_hash = self.hash_method(open(Path(root).joinpath(file), 'rb')) if self.hash_method else None
+                    yield file_hash, str(Path(root).joinpath(file))
         else:
             # only yields if it exists
             if path.exists():
-                yield s3etag(open(path, 'rb')), str(path)
+                yield self.hash_method(open(path, 'rb')) if self.hash_method else None, str(path)

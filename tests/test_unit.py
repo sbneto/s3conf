@@ -71,26 +71,28 @@ def test_etag():
         assert file.md5() == file_list[0][0]
 
 
-def test_mapping():
+def test_copy_list():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
         conf = s3conf.S3Conf(settings=settings)
-        mapping = list(conf.storages.map(settings.config_file, 's3://s3conf/files/s3conf.ini'))
+        root_folder = Path(settings.root_folder)
+        _, mapping = conf.storages.prepare_copy_list(settings.config_file, 's3://s3conf/files/s3conf.ini')
         assert mapping == [
-            ('"d219ee6bd8f9e9ddda91cf51f263a883"', str(settings.config_file), 'files/s3conf.ini'),
+            ('"d219ee6bd8f9e9ddda91cf51f263a883"', str(settings.config_file), 's3://s3conf/files/s3conf.ini'),
         ]
-        mapping = list(conf.storages.map(settings.root_folder.joinpath('subfolder'), 's3://s3conf/files/subfolder'))
+        _, mapping = conf.storages.prepare_copy_list(str(root_folder.joinpath('subfolder')),
+                                                   's3://s3conf/files/subfolder')
         assert mapping == [
             (
                 '"c269c739c5226abab0a4fce7df301155-2"',
-                settings.root_folder.joinpath('subfolder/file2.txt'),
-                'files/subfolder/file2.txt',
+                str(root_folder.joinpath('subfolder/file2.txt')),
+                's3://s3conf/files/subfolder/file2.txt',
             ),
             (
                 '"2548729e9c3c60cc3789dfb2408e475d"',
-                settings.root_folder.joinpath('subfolder/file3.txt'),
-                'files/subfolder/file3.txt',
+                str(root_folder.joinpath('subfolder/file3.txt')),
+                's3://s3conf/files/subfolder/file3.txt',
             )
         ]
 
@@ -143,27 +145,28 @@ def test_push_pull_files():
         config_file, _ = _setup_basic_test(temp_dir)
 
         settings = config.Settings(section='test')
+        root_folder = Path(settings.root_folder)
         s3 = s3conf.S3Conf(settings=settings)
 
         hashes = s3.push()
 
         assert hashes == {
-            str(settings.root_folder.joinpath('file1.txt')): '"826e8142e6baabe8af779f5f490cf5f5"',
-            str(settings.root_folder.joinpath('subfolder/file2.txt')): '"c269c739c5226abab0a4fce7df301155-2"',
-            str(settings.root_folder.joinpath('subfolder/file3.txt')): '"2548729e9c3c60cc3789dfb2408e475d"'
+            str(root_folder.joinpath('file1.txt')): '"826e8142e6baabe8af779f5f490cf5f5"',
+            str(root_folder.joinpath('subfolder/file2.txt')): '"c269c739c5226abab0a4fce7df301155-2"',
+            str(root_folder.joinpath('subfolder/file3.txt')): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
         s3.push()
 
-        os.remove(Path(settings.root_folder).joinpath('file1.txt'))
-        rmtree(Path(settings.root_folder).joinpath('subfolder'))
+        os.remove(Path(root_folder).joinpath('file1.txt'))
+        rmtree(Path(root_folder).joinpath('subfolder'))
 
         hashes = s3.pull()
 
         assert hashes == {
-            str(settings.root_folder.joinpath('file1.txt')): '"826e8142e6baabe8af779f5f490cf5f5"',
-            str(settings.root_folder.joinpath('subfolder/file2.txt')): '"c269c739c5226abab0a4fce7df301155-2"',
-            str(settings.root_folder.joinpath('subfolder/file3.txt')): '"2548729e9c3c60cc3789dfb2408e475d"'
+            str(root_folder.joinpath('file1.txt')): '"826e8142e6baabe8af779f5f490cf5f5"',
+            str(root_folder.joinpath('subfolder/file2.txt')): '"c269c739c5226abab0a4fce7df301155-2"',
+            str(root_folder.joinpath('subfolder/file3.txt')): '"2548729e9c3c60cc3789dfb2408e475d"'
         }
 
 
@@ -214,11 +217,12 @@ def test_setup_environment():
 
         s3.pull()
 
+        root_folder = Path(settings.root_folder)
         assert env_vars['TEST'] == '123'
         assert env_vars['TEST2'] == '456'
-        assert open(settings.root_folder.joinpath('file1.txt')).read() == 'file1'
-        assert open(settings.root_folder.joinpath('subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
-        assert open(settings.root_folder.joinpath('subfolder/file3.txt')).read() == 'file3'
+        assert open(root_folder.joinpath('file1.txt')).read() == 'file1'
+        assert open(root_folder.joinpath('subfolder/file2.txt')).read() == 'file2' * 1024 * 1024 * 2
+        assert open(root_folder.joinpath('subfolder/file3.txt')).read() == 'file3'
 
 
 def test_section_defined_in_settings():
@@ -251,7 +255,7 @@ def test_existing_lookup_config_folder():
         config_file, _ = _setup_basic_test(temp_dir)
         current_path = Path(temp_dir).joinpath('tests/path1/path2/path3/')
         current_path.mkdir(parents=True, exist_ok=True)
-        config_folder = config._lookup_root_folder(current_path)
+        config_folder = Path(config._lookup_root_folder(current_path))
         assert config_folder == config_file.parent.resolve()
 
 
@@ -267,7 +271,7 @@ def test_set_unset_env_var():
         settings = config.Settings(section='test')
         s3 = s3conf.S3Conf(settings=settings)
 
-        with s3.get_envfile(create=True) as env_file:
+        with s3.get_envfile(mode='w+') as env_file:
             env_file.set('TEST=123')
 
             env_vars = env_file.as_dict()

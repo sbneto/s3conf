@@ -9,3 +9,4 @@ configobj~=5.0.6
 google-cloud-storage~=1.15.0
 bumpversion~=0.5.3
 requests~=2.21.0
+crc32c~=1.7
