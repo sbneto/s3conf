@@ -1,6 +1,7 @@
 import codecs
 import logging
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from . import exceptions, config
@@ -79,18 +80,30 @@ class S3Conf:
         if not force:
             self.check_remote_changes()
         hashes = {}
-        for local_path, remote_path in self.settings.file_mappings.items():
-            copy_hashes = self.storages.copy(local_path, remote_path)
-            hashes.update({str(local_file): local_hash for local_hash, local_file, _ in copy_hashes})
+
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for local_path, remote_path in self.settings.file_mappings.items():
+                futures.append(executor.submit(self.storages.copy, local_path, remote_path))
+            for future in as_completed(futures):
+                copy_hashes = future.result()
+                hashes.update({str(local_file): local_hash for local_hash, local_file, _ in copy_hashes})
+
         self.verify_cache()
         json.dump(hashes, open(self.settings.hash_file, 'w'), indent=4)
         return hashes
 
     def pull(self):
         hashes = {}
-        for local_path, remote_path in self.settings.file_mappings.items():
-            copy_hashes = self.storages.copy(remote_path, local_path)
-            hashes.update({str(local_file): remote_hash for remote_hash, _, local_file in copy_hashes})
+
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for local_path, remote_path in self.settings.file_mappings.items():
+                futures.append(executor.submit(self.storages.copy, remote_path, local_path))
+            for future in as_completed(futures):
+                copy_hashes = future.result()
+                hashes.update({str(local_file): remote_hash for remote_hash, _, local_file in copy_hashes})
+
         self.verify_cache()
         json.dump(hashes, open(self.settings.hash_file, 'w'), indent=4)
         return hashes
@@ -108,6 +121,7 @@ class S3Conf:
     def create_envfile(self):
         logger.info('Trying to create envifile %s', self.settings.environment_file_path)
         remote_storage = self.storages.storage(self.settings.environment_file_path)
+        remote_storage.create_bucket()
         _, _, path = partition_path(self.settings.environment_file_path)
         envfile_exist = bool(list(remote_storage.list(path)))
         if envfile_exist:

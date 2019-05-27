@@ -51,6 +51,9 @@ class BaseStorage:
         logger.debug('Reading from %s', path)
         return self.file_class(path, storage=self, mode=mode, encoding=encoding)
 
+    def create_bucket(self):
+        raise NotImplementedError()
+
     def write(self, f, path):
         raise NotImplementedError()
 
@@ -148,7 +151,11 @@ class S3Storage(BaseStorage):
             else:
                 raise
 
-    def _write(self, f, path):
+    def create_bucket(self):
+        self.s3.create_bucket(Bucket=self.bucket)
+
+    def write(self, f, path):
+        logger.debug('Writing to %s', path)
         bucket = get_s3_bucket(self, self.bucket)
         # boto3 closes the handler, creating a copy
         # https://github.com/boto/s3transfer/issues/80
@@ -157,14 +164,6 @@ class S3Storage(BaseStorage):
             copyfileobj(f, file_to_close)
             file_to_close.seek(0)
             bucket.upload_fileobj(file_to_close, path)
-
-    def write(self, f, path):
-        logger.debug('Writing to %s', path)
-        try:
-            self._write(f, path)
-        except ClientError:
-            self.s3.create_bucket(Bucket=self.bucket)
-            self._write(f, path)
 
     def list(self, path):
         logger.debug('Listing %s', path)
@@ -227,19 +226,15 @@ class GCStorage(BaseStorage):
         stream.seek(0)
         return stream
 
-    def _write(self, f, path):
+    def create_bucket(self):
+        self.gcs.create_bucket(self.bucket)
+
+    def write(self, f, path):
+        logger.debug('Writing to %s', path)
         bucket = get_gcs_bucket(self, self.bucket)
         blob = bucket.blob(path)
         f.seek(0)
         blob.upload_from_file(f, path)
-
-    def write(self, f, path):
-        logger.debug('Writing to %s', path)
-        try:
-            self._write(f, path)
-        except Exception:
-            self.gcs.create_bucket(self.bucket)
-            self._write(f, path)
 
     def list(self, path):
         logger.debug('Listing %s', path)
@@ -251,9 +246,10 @@ class GCStorage(BaseStorage):
 
 
 class LocalStorage(BaseStorage):
-    def __init__(self, root='/', **kwargs):
+    def __init__(self, root='/', hash_method=None, **kwargs):
         super().__init__(**kwargs)
         self.root = root
+        self.hash_method = hash_method
 
     def build_path(self, path):
         path = path.lstrip('/')
@@ -268,6 +264,9 @@ class LocalStorage(BaseStorage):
             return stream
         except FileNotFoundError:
             raise exceptions.FileDoesNotExist(path)
+
+    def create_bucket(self):
+        pass
 
     def write(self, f, path):
         Path(path).parent.mkdir(parents=True, exist_ok=True)

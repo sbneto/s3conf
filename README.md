@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/sbneto/s3conf.svg?branch=master)](https://travis-ci.org/sbneto/s3conf)
 
-Utility package to help managing configuration files stored in S3-like services. Needs python3.
+Utility package to help managing configuration files stored in S3-like services.
 
 # Installation
 

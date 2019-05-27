@@ -50,3 +50,25 @@ core._default_handler.formatter = core.ColorFormatter()
 
 # adding color to INFO log messages as well
 core.ColorFormatter.colors['info'] = dict(fg='green')
+
+
+# Solving 2 year old boto issue regarding empty file uploads
+# https://github.com/boto/botocore/pull/1328
+try:
+    from botocore.awsrequest import AWSConnection
+    _original_send_request = AWSConnection._send_request
+
+
+    def _new_send_request(self, method, url, body, headers, *args, **kwargs):
+        if headers.get('Content-Length') == '0':
+            # From RFC: https://tools.ietf.org/html/rfc7231#section-5.1.1
+            # Requirement for clients:
+            # - A client MUST NOT generate a 100-continue expectation
+            #   in a request that does not include a message body.
+            headers.pop('Expect', None)
+        return _original_send_request(self, method, url, body, headers, *args, **kwargs)
+
+
+    AWSConnection._send_request = _new_send_request
+except ImportError:
+    pass
