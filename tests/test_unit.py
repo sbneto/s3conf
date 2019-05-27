@@ -109,7 +109,7 @@ def test_file():
             assert f.read() == 'test'
 
 
-def test_add():
+def test_add_rm():
     with tempfile.TemporaryDirectory() as temp_dir:
         _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
@@ -118,6 +118,10 @@ def test_add():
         assert mapping == 's3://s3conf/files/file1.txt:file1.txt;' \
                           's3://s3conf/files/subfolder:subfolder;' \
                           's3://s3conf/files/subfolder2:subfolder2'
+        settings.rm_mapping('subfolder2')
+        mapping = settings.serialize_mappings()
+        assert mapping == 's3://s3conf/files/file1.txt:file1.txt;' \
+                          's3://s3conf/files/subfolder:subfolder'
 
 
 def test_diff():

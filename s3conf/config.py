@@ -138,7 +138,7 @@ class Settings:
 
     def rm_mapping(self, local_path):
         local_path = Path(local_path)
-        local_path = self.root_folder.joinpath(local_path.relative_to(local_path.root))
+        local_path = Path(self.root_folder).joinpath(local_path.relative_to(local_path.root))
         del self.file_mappings[str(local_path)]
 
     def serialize_mappings(self):
