@@ -2,6 +2,7 @@ import os
 import codecs
 import logging
 import difflib
+from concurrent.futures import ThreadPoolExecutor
 from shutil import copyfileobj
 from pathlib import Path
 from functools import lru_cache
@@ -87,15 +88,14 @@ def list_all_files(path):
 
 
 @lru_cache()
-def _make_storage(settings, protocol, bucket):
+def _make_storage(mapper, protocol, bucket):
     try:
         storage = {
-            's3': get_s3_storage(settings, BaseFile, bucket),
-            'gs': get_gs_storage(settings, BaseFile, bucket),
-            'file': LocalStorage(file_class=BaseFile, root=settings.root_folder),
+            's3': get_s3_storage(mapper.settings, BaseFile, bucket),
+            'gs': get_gs_storage(mapper.settings, BaseFile, bucket),
         }[protocol]
     except KeyError:
-        storage = LocalStorage(file_class=BaseFile, root=settings.root_folder)
+        storage = LocalStorage(file_class=BaseFile, root=mapper.settings.root_folder, hash_method=mapper.local_hash)
     logger.debug('Using %s storage', storage)
     return storage
 
@@ -103,17 +103,18 @@ def _make_storage(settings, protocol, bucket):
 class StorageMapper:
     def __init__(self, settings):
         self.settings = settings
+        self.local_hash = self.storage(self.settings.environment_file_path).hash_method
 
     def storage(self, path=''):
         protocol, bucket, _ = partition_path(path)
         logger.debug('Getting storage for %s %s', protocol, bucket)
-        return _make_storage(self.settings, protocol, bucket)
+        return _make_storage(self, protocol, bucket)
 
     def expand_path(self, source_path, target_path):
         source = self.storage(source_path)
         source_protocol, source_bucket, source_path = partition_path(source_path)
         target_protocol, target_bucket, target_path = partition_path(target_path)
-        files = {file_path: etag for etag, file_path in source.list(source_path)}
+        files = {file_path: source_hash for source_hash, file_path in source.list(source_path)}
         is_dir = False if len(files) == 1 and source_path in files else True
         if not is_dir:
             yield files[source_path], \
@@ -131,19 +132,6 @@ class StorageMapper:
         protocol, bucket, sripped_path = partition_path(path)
         return {build_path(protocol, bucket, file_path): etag for etag, file_path in target.list(sripped_path)}
 
-    def _define_hash_strategy(self, source_path, target_path):
-        source = self.storage(source_path)
-        target = self.storage(target_path)
-        if not source.hash_method and not target.hash_method:
-            # use s3 strategy as it does not create any external dependencies
-            source.hash_method = target.hash_method = s3etag
-        elif not source.hash_method:
-            source.hash_method = target.hash_method
-        elif not target.hash_method:
-            target.hash_method = source.hash_method
-        elif target.hash_method != source.hash_method:
-            raise ValueError('Cannot find a common hash strategy')
-
     def prepare_copy_list(self, source_path, target_path, force=False):
         to_copy = []
         target_hashes = {}
@@ -151,7 +139,6 @@ class StorageMapper:
 
         # if we are not forcing the copy, we check the hashes to avoid unnecessary copies
         if not force:
-            self._define_hash_strategy(source_path, target_path)
             target_hashes = self.list(target_path)
 
         for source_hash, source_file, target_file in self.expand_path(source_path, target_path):
@@ -163,15 +150,21 @@ class StorageMapper:
 
         return final_state, to_copy
 
+    def _copy(self, source, target, source_file, target_file):
+        _, _, source_file = partition_path(source_file)
+        _, _, target_file = partition_path(target_file)
+        with source.open(source_file) as source_stream, target.open(target_file, 'wb') as target_stream:
+            copyfileobj(source_stream, target_stream)
+
     def copy(self, source_path, target_path, force=False):
         final_state, copy_list = self.prepare_copy_list(source_path, target_path, force)
         source = self.storage(source_path)
         target = self.storage(target_path)
-        for _, source_file, target_file in copy_list:
-            _, _, source_file = partition_path(source_file)
-            _, _, target_file = partition_path(target_file)
-            with source.open(source_file) as source_stream, target.open(target_file, 'wb') as target_stream:
-                copyfileobj(source_stream, target_stream)
+
+        with ThreadPoolExecutor() as executor:
+            for _, source_file, target_file in copy_list:
+                executor.submit(self._copy, source, target, source_file, target_file)
+
         return final_state
 
 
