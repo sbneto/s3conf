@@ -9,14 +9,14 @@ Utility package to help managing configuration files stored in S3-like services.
 There are binaries for Linux and Mac:
 
 ```bash
-sudo curl -L "https://github.com/sbneto/s3conf/releases/download/0.10.1/s3conf-$(uname -s)-$(uname -m)" -o /usr/local/bin/s3conf
+sudo curl -L "https://github.com/sbneto/s3conf/releases/download/0.10.2/s3conf-$(uname -s)-$(uname -m)" -o /usr/local/bin/s3conf
 sudo chmod 755 /usr/local/bin/s3conf
 ```
 
 For Alpine linux, use
 
 ```bash
-sudo curl -L "https://github.com/sbneto/s3conf/releases/download/0.10.1/s3conf-$(uname -s)-$(uname -m)-alpine" -o /usr/local/bin/s3conf
+sudo curl -L "https://github.com/sbneto/s3conf/releases/download/0.10.2/s3conf-$(uname -s)-$(uname -m)-alpine" -o /usr/local/bin/s3conf
 sudo chmod 755 /usr/local/bin/s3conf
 ```
 
