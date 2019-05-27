@@ -95,11 +95,11 @@ def env(section, map_files, phusion, phusion_path, quiet, edit, create):
         settings = config.Settings(section=section)
         conf = s3conf.S3Conf(settings=settings)
 
-        if create:
-            conf.create_envfile()
-
-        if edit:
-            conf.edit_envfile()
+        if create or edit:
+            if create:
+                conf.create_envfile()
+            if edit:
+                conf.edit_envfile()
         else:
             with conf.get_envfile() as env_file:
                 env_vars = env_file.as_dict()
