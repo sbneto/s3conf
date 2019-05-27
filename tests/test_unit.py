@@ -147,6 +147,7 @@ def test_push_pull_files():
         settings = config.Settings(section='test')
         root_folder = Path(settings.root_folder)
         s3 = s3conf.S3Conf(settings=settings)
+        s3.create_envfile()
 
         hashes = s3.push()
 
