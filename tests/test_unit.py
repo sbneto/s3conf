@@ -62,6 +62,7 @@ def test_etag():
 
         settings = config.Settings(section='test')
         conf = s3conf.S3Conf(settings=settings)
+        conf.create_envfile()
 
         local_path = Path(temp_dir).joinpath('tests/path1/file1.txt')
         conf.storages.copy(local_path, 's3://s3conf/remote/file1.txt')
@@ -177,6 +178,8 @@ def test_copy():
 
         settings = config.Settings(section='test')
         conf = s3conf.S3Conf(settings=settings)
+        conf.create_envfile()
+
         conf.storages.copy(settings.root_folder, 's3://s3conf/remote')
         conf.storages.copy(settings.root_folder, 's3://s3conf/remote')
         conf.storages.copy('s3://s3conf/remote', Path(temp_dir).joinpath('remote'))
@@ -209,6 +212,7 @@ def test_setup_environment():
         config_file, _ = _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
         s3 = s3conf.S3Conf(settings=settings)
+        s3.create_envfile()
 
         with s3.get_envfile('w') as f:
             f.write('TEST=123\nTEST2=456\n')
@@ -271,6 +275,7 @@ def test_set_unset_env_var():
         config_file, _ = _setup_basic_test(temp_dir)
         settings = config.Settings(section='test')
         s3 = s3conf.S3Conf(settings=settings)
+        s3.create_envfile()
 
         with s3.get_envfile(mode='w+') as env_file:
             env_file.set('TEST=123')
